@@ -198,3 +198,76 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
+
+.search-wrapper {
+    position: relative;
+}
+
+.search-results {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    max-height: 400px;
+    overflow-y: auto;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    margin-top: -1px;
+}
+
+.search-result-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-item:hover {
+    background-color: #f8f9fa;
+}
+
+.search-result-thumbnail {
+    width: 60px;
+    height: 28px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-right: 0.75rem;
+    background: linear-gradient(to right, #e0e0e0, #f0f0f0);
+}
+
+.search-result-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.search-result-name {
+    font-weight: 600;
+    color: var(--steam-blue);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0.25rem;
+}
+
+.search-result-appid {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.search-no-results {
+    padding: 1rem;
+    text-align: center;
+    color: #6c757d;
+}
+
+.search-loading {
+    padding: 1rem;
+    text-align: center;
+}
+

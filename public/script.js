@@ -1,23 +1,168 @@
 let games = {};
 let currentModalAppId = null;
 let currentCursor = '*';
+let searchTimeout = null;
+let searchCache = {};
+let selectedAppId = null;
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
+
+async function handleSearchInput() {
+    const input = document.getElementById('appIdInput');
+    const searchTerm = input.value.trim();
+    const resultsDiv = document.getElementById('searchResults');
+
+    selectedAppId = null;
+
+    if (searchTerm.length < 2) {
+        resultsDiv.classList.add('d-none');
+        return;
+    }
+
+    if (/^\d+$/.test(searchTerm)) {
+        resultsDiv.classList.add('d-none');
+        return;
+    }
+
+    if (searchTimeout) {
+        clearTimeout(searchTimeout);
+    }
+
+    searchTimeout = setTimeout(async () => {
+        await searchGames(searchTerm);
+    }, 300);
+}
+
+async function searchGames(searchTerm) {
+    const resultsDiv = document.getElementById('searchResults');
+
+    if (searchCache[searchTerm.toLowerCase()]) {
+        displaySearchResults(searchCache[searchTerm.toLowerCase()]);
+        return;
+    }
+
+    resultsDiv.innerHTML = `
+        <div class="search-loading">
+            <div class="spinner-border spinner-border-sm text-primary"></div>
+            <span class="ms-2">Buscando...</span>
+        </div>
+    `;
+    resultsDiv.classList.remove('d-none');
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/search?q=${encodeURIComponent(searchTerm)}`);
+        const data = await response.json();
+
+        if (data.success && data.games && data.games.length > 0) {
+            searchCache[searchTerm.toLowerCase()] = data.games;
+            displaySearchResults(data.games);
+        } else {
+            resultsDiv.innerHTML = `
+                <div class="search-no-results">
+                    <i class="bi bi-search"></i> Nenhum jogo encontrado
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Erro ao buscar jogos:', error);
+        resultsDiv.innerHTML = `
+            <div class="search-no-results text-danger">
+                <i class="bi bi-exclamation-triangle"></i> Erro ao buscar
+            </div>
+        `;
+    }
+}
+
+function displaySearchResults(games) {
+    const resultsDiv = document.getElementById('searchResults');
+    
+    if (!games || games.length === 0) {
+        resultsDiv.innerHTML = `
+            <div class="search-no-results">
+                <i class="bi bi-search"></i> Nenhum jogo encontrado
+            </div>
+        `;
+        resultsDiv.classList.remove('d-none');
+        return;
+    }
+
+    const resultsHTML = games.map(game => `
+        <div class="search-result-item" onclick="selectGame('${game.appid}', '${escapeHtml(game.name)}')">
+            <img 
+                src="${game.header_image}" 
+                alt="${escapeHtml(game.name)}"
+                class="search-result-thumbnail"
+                onerror="this.src='https://via.placeholder.com/60x28?text=No+Image'">
+            <div class="search-result-info">
+                <div class="search-result-name">${escapeHtml(game.name)}</div>
+                <div class="search-result-appid">AppID: ${game.appid}</div>
+            </div>
+        </div>
+    `).join('');
+
+    resultsDiv.innerHTML = resultsHTML;
+    resultsDiv.classList.remove('d-none');
+}
+
+function selectGame(appId, gameName) {
+    const input = document.getElementById('appIdInput');
+    const resultsDiv = document.getElementById('searchResults');
+    
+    input.value = gameName;
+    
+    selectedAppId = appId;
+    
+    resultsDiv.classList.add('d-none');
+    
+    addGame();
+}
+
+function showSearchResults() {
+    const input = document.getElementById('appIdInput');
+    const resultsDiv = document.getElementById('searchResults');
+    
+    if (input.value.trim().length >= 2 && !resultsDiv.classList.contains('d-none')) {
+        return;
+    }
+}
+
+function hideSearchResults() {
+    setTimeout(() => {
+        document.getElementById('searchResults').classList.add('d-none');
+    }, 200);
+}
+
+document.addEventListener('click', (e) => {
+    const searchWrapper = document.querySelector('.search-wrapper');
+    if (searchWrapper && !searchWrapper.contains(e.target)) {
+        document.getElementById('searchResults').classList.add('d-none');
+    }
+});
+
+
 async function addGame() {
     const appIdInput = document.getElementById('appIdInput');
-    const appId = appIdInput.value.trim();
+    let appId = selectedAppId || appIdInput.value.trim();
 
-    if (!appId || isNaN(appId)) {
-        showAlert('Por favor, digite um AppID válido!', 'warning');
+    if (!/^\d+$/.test(appId)) {
+        showAlert('Por favor, selecione um jogo da lista ou digite um AppID válido!', 'warning');
+        return;
+    }
+
+    if (!appId) {
+        showAlert('Por favor, digite o nome ou AppID de um jogo!', 'warning');
         return;
     }
 
     if (games[appId]) {
         showAlert('Este jogo já foi adicionado!', 'info');
         appIdInput.value = '';
+        selectedAppId = null;
         return;
     }
+
+    document.getElementById('searchResults').classList.add('d-none');
 
     showLoading(true);
 
@@ -46,6 +191,7 @@ async function addGame() {
         renderGameCard(appId);
         
         appIdInput.value = '';
+        selectedAppId = null;
         showAlert(`Jogo "${gameName}" adicionado com sucesso!`, 'success');
 
     } catch (error) {

@@ -23,12 +23,18 @@
                 <h5 class="card-title mb-3">Buscar Jogo da Steam</h5>
                 <div class="row g-3">
                     <div class="col-md-8">
-                        <input 
-                            type="text" 
-                            id="appIdInput" 
-                            class="form-control" 
-                            placeholder="Digite o AppID do jogo (ex: 730 para CS:GO, 570 para Dota 2)"
-                            onkeypress="if(event.key === 'Enter') addGame()">
+                        <div class="search-wrapper position-relative">
+                            <input 
+                                type="text" 
+                                id="appIdInput" 
+                                class="form-control" 
+                                placeholder="Digite o nome ou AppID do jogo (ex: Counter-Strike, 730)"
+                                autocomplete="off"
+                                oninput="handleSearchInput()"
+                                onkeypress="if(event.key === 'Enter') addGame()"
+                                onfocus="showSearchResults()">
+                            <div id="searchResults" class="search-results position-absolute w-100 d-none"></div>
+                        </div>
                     </div>
                     <div class="col-md-4">
                         <button onclick="addGame()" class="btn btn-primary w-100">
@@ -38,7 +44,7 @@
                 </div>
                 <div class="mt-2">
                     <small class="text-muted">
-                        💡 Exemplos: 730 (CS:GO), 570 (Dota 2), 1091500 (Cyberpunk 2077), 1245620 (Elden Ring)
+                        💡 Digite o nome do jogo ou AppID. Exemplos: "Counter-Strike", "Dota", ou "730"
                     </small>
                 </div>
             </div>

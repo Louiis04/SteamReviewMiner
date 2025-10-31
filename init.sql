@@ -47,10 +47,22 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS game_search_cache (
+    id SERIAL PRIMARY KEY,
+    search_term VARCHAR(255) NOT NULL,
+    app_id VARCHAR(20) NOT NULL,
+    name VARCHAR(500) NOT NULL,
+    header_image TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(search_term, app_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_comments_app_id ON comments(app_id);
 CREATE INDEX IF NOT EXISTS idx_comments_timestamp ON comments(timestamp_created DESC);
 CREATE INDEX IF NOT EXISTS idx_review_stats_app_id ON review_stats(app_id);
 CREATE INDEX IF NOT EXISTS idx_games_name ON games(name);
+CREATE INDEX IF NOT EXISTS idx_games_name_lower ON games(LOWER(name));
+CREATE INDEX IF NOT EXISTS idx_search_cache_term ON game_search_cache(LOWER(search_term));
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

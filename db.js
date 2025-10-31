@@ -194,7 +194,7 @@ async function areCommentsExpired(appId) {
     const result = await pool.query(query, [appId]);
     
     if (result.rows.length === 0 || !result.rows[0].last_created) {
-        return true; // Não existe, precisa buscar
+        return true; 
     }
     
     const hoursAgo = parseFloat(result.rows[0].hours_ago);
@@ -238,6 +238,76 @@ async function healthCheck() {
     }
 }
 
+async function searchGamesByName(searchTerm, limit = 10) {
+    const query = `
+        SELECT app_id, name, header_image
+        FROM games
+        WHERE LOWER(name) LIKE LOWER($1)
+        ORDER BY 
+            CASE 
+                WHEN LOWER(name) = LOWER($2) THEN 0
+                WHEN LOWER(name) LIKE LOWER($3) THEN 1
+                ELSE 2
+            END,
+            name
+        LIMIT $4
+    `;
+    
+    const searchPattern = `%${searchTerm}%`;
+    const exactMatch = searchTerm;
+    const startsWithPattern = `${searchTerm}%`;
+    
+    const result = await pool.query(query, [searchPattern, exactMatch, startsWithPattern, limit]);
+    return result.rows;
+}
+
+/**
+ * Salva resultado de busca no cache
+ */
+async function saveSearchCache(searchTerm, games) {
+    if (!games || games.length === 0) return;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        for (const game of games) {
+            const query = `
+                INSERT INTO game_search_cache (search_term, app_id, name, header_image)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (search_term, app_id) DO NOTHING
+            `;
+            await client.query(query, [
+                searchTerm.toLowerCase(),
+                game.appid,
+                game.name,
+                game.header_image
+            ]);
+        }
+
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function getSearchCache(searchTerm, limit = 10) {
+    const query = `
+        SELECT DISTINCT ON (app_id) app_id, name, header_image
+        FROM game_search_cache
+        WHERE LOWER(search_term) LIKE LOWER($1)
+        ORDER BY app_id, created_at DESC
+        LIMIT $2
+    `;
+    
+    const searchPattern = `%${searchTerm}%`;
+    const result = await pool.query(query, [searchPattern, limit]);
+    return result.rows;
+}
+
 module.exports = {
     pool,
     getGame,
@@ -252,4 +322,7 @@ module.exports = {
     getCompleteGameData,
     needsUpdate,
     healthCheck,
+    searchGamesByName,
+    saveSearchCache,
+    getSearchCache,
 };

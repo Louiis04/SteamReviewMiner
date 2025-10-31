@@ -247,6 +247,88 @@ app.get('/api/game/details/:appId', async (req, res) => {
     }
 });
 
+app.get('/api/search', async (req, res) => {
+    const { q } = req.query;
+
+    if (!q || q.trim().length < 2) {
+        return res.json({ 
+            success: false, 
+            message: 'Digite ao menos 2 caracteres para buscar',
+            games: [] 
+        });
+    }
+
+    try {
+        const searchTerm = q.trim();
+        console.log(`🔍 Buscando jogos com termo: "${searchTerm}"`);
+
+        const localGames = await db.searchGamesByName(searchTerm, 10);
+        
+        if (localGames.length > 0) {
+            console.log(`📦 [CACHE] Encontrados ${localGames.length} jogos no banco local`);
+            return res.json({
+                success: true,
+                games: localGames.map(g => ({
+                    appid: g.app_id,
+                    name: g.name,
+                    header_image: g.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${g.app_id}/header.jpg`
+                })),
+                fromCache: true
+            });
+        }
+
+        const cachedSearch = await db.getSearchCache(searchTerm, 10);
+        if (cachedSearch.length > 0) {
+            console.log(`📦 [CACHE] Encontrados ${cachedSearch.length} jogos no cache de busca`);
+            return res.json({
+                success: true,
+                games: cachedSearch.map(g => ({
+                    appid: g.app_id,
+                    name: g.name,
+                    header_image: g.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${g.app_id}/header.jpg`
+                })),
+                fromCache: true
+            });
+        }
+
+        console.log(`🌐 [API] Buscando na Steam Store Search API`);
+        const searchResponse = await axios.get(
+            `https://steamcommunity.com/actions/SearchApps/${encodeURIComponent(searchTerm)}`
+        );
+
+        if (searchResponse.data && searchResponse.data.length > 0) {
+            const games = searchResponse.data.slice(0, 10).map(game => ({
+                appid: game.appid.toString(),
+                name: game.name,
+                header_image: `https://cdn.akamai.steamstatic.com/steam/apps/${game.appid}/header.jpg`
+            }));
+
+            await db.saveSearchCache(searchTerm, games);
+            console.log(`💾 ${games.length} resultados salvos no cache de busca`);
+
+            return res.json({
+                success: true,
+                games: games,
+                fromCache: false
+            });
+        }
+
+        res.json({
+            success: true,
+            games: [],
+            message: 'Nenhum jogo encontrado'
+        });
+
+    } catch (error) {
+        console.error('Erro ao buscar jogos:', error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Erro ao buscar jogos',
+            games: []
+        });
+    }
+});
+
 app.get('/api/health', async (req, res) => {
     const dbHealth = await db.healthCheck();
     res.json({

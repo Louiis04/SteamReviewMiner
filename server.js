@@ -5,6 +5,7 @@ const path = require('path');
 require('dotenv').config();
 
 const db = require('./db');
+const popularGames = require('./popularGames');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -336,6 +337,57 @@ app.get('/api/health', async (req, res) => {
         database: dbHealth,
         timestamp: new Date().toISOString()
     });
+});
+
+app.get('/api/preload', async (req, res) => {
+    const { limit = 100 } = req.query;
+    const gamesToLoad = popularGames.slice(0, parseInt(limit));
+    res.json({ success: true, message: 'Pré-carregamento iniciado em background', total: gamesToLoad.length });
+    setImmediate(async () => {
+        console.log(`Iniciando pré-carregamento de ${gamesToLoad.length} jogos...`);
+        let loaded = 0;
+        let errors = 0;
+        for (const appId of gamesToLoad) {
+            try {
+                const needsUpdate = await db.needsUpdate(appId);
+                if (needsUpdate) {
+                    try {
+                        const detailsResponse = await axios.get(`https://store.steampowered.com/api/appdetails`, { params: { appids: appId, l: 'portuguese' } });
+                        if (detailsResponse.data[appId]?.success) await db.saveGame(appId, detailsResponse.data[appId].data);
+                    } catch (err) {
+                        console.log(`Erro ao buscar detalhes do AppID ${appId}`);
+                    }
+                    try {
+                        const reviewsResponse = await axios.get(`https://store.steampowered.com/appreviews/${appId}`, { params: { json: 1, num_per_page: 0, language: 'all', purchase_type: 'all' } });
+                        if (reviewsResponse.data.success) {
+                            await db.saveReviewStats(appId, reviewsResponse.data.query_summary);
+                            loaded++;
+                            console.log(`[${loaded}/${gamesToLoad.length}] AppID ${appId} carregado`);
+                        }
+                    } catch (err) {
+                        errors++;
+                        console.log(`Erro ao buscar reviews do AppID ${appId}`);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                }
+            } catch (error) {
+                errors++;
+                console.error(`Erro ao processar AppID ${appId}:`, error.message);
+            }
+        }
+        console.log(`Pré-carregamento concluído: ${loaded} jogos carregados, ${errors} erros`);
+    });
+});
+
+app.get('/api/top-games', async (req, res) => {
+    try {
+        const { limit = 50, min_reviews = 100, sort = 'rating' } = req.query;
+        const topGames = await db.getTopRatedGames(parseInt(limit), parseInt(min_reviews), sort);
+        res.json({ success: true, games: topGames, total: topGames.length });
+    } catch (error) {
+        console.error('Erro ao buscar top games:', error.message);
+        res.status(500).json({ success: false, error: 'Erro ao buscar jogos melhores avaliados', details: error.message });
+    }
 });
 
 app.get('/', (req, res) => {

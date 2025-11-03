@@ -261,9 +261,6 @@ async function searchGamesByName(searchTerm, limit = 10) {
     return result.rows;
 }
 
-/**
- * Salva resultado de busca no cache
- */
 async function saveSearchCache(searchTerm, games) {
     if (!games || games.length === 0) return;
 
@@ -307,6 +304,47 @@ async function getSearchCache(searchTerm, limit = 10) {
     const result = await pool.query(query, [searchPattern, limit]);
     return result.rows;
 }
+async function getTopRatedGames(limit = 50, minReviews = 100, sortBy = 'rating') {
+    let orderBy;
+    
+    switch (sortBy) {
+        case 'reviews':
+            orderBy = 'rs.total_reviews DESC';
+            break;
+        case 'recent':
+            orderBy = 'g.updated_at DESC';
+            break;
+        case 'rating':
+        default:
+            orderBy = 'rs.review_score DESC, rs.total_positive DESC';
+            break;
+    }
+
+    const query = `
+        SELECT 
+            g.app_id,
+            g.name,
+            g.short_description,
+            g.header_image,
+            g.developers,
+            g.publishers,
+            rs.total_reviews,
+            rs.total_positive,
+            rs.total_negative,
+            rs.review_score,
+            rs.review_score_desc,
+            CAST(ROUND(CAST(rs.total_positive AS NUMERIC) / NULLIF(rs.total_reviews, 0) * 100, 1) AS NUMERIC) as positive_percentage,
+            rs.updated_at as stats_updated_at
+        FROM games g
+        INNER JOIN review_stats rs ON g.app_id = rs.app_id
+        WHERE rs.total_reviews >= $1
+        ORDER BY ${orderBy}
+        LIMIT $2
+    `;
+
+    const result = await pool.query(query, [minReviews, limit]);
+    return result.rows;
+}
 
 module.exports = {
     pool,
@@ -325,4 +363,5 @@ module.exports = {
     searchGamesByName,
     saveSearchCache,
     getSearchCache,
+    getTopRatedGames,
 };

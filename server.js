@@ -368,7 +368,7 @@ app.get('/api/preload', async (req, res) => {
                         errors++;
                         console.log(`Erro ao buscar reviews do AppID ${appId}`);
                     }
-                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                 }
             } catch (error) {
                 errors++;

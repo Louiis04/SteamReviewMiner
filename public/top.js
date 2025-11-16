@@ -1,6 +1,9 @@
 const API_BASE_URL = 'http://localhost:3000/api';
 let currentModalAppId = null;
 let currentCursor = '*';
+let allGames = [];
+let currentPage = 1;
+const GAMES_PER_PAGE = 10;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadTopGames();
@@ -14,17 +17,28 @@ async function loadTopGames() {
     showLoading(true);
     hideEmptyState();
     hideStatsArea();
+    hidePagination();
     document.getElementById('gamesGrid').innerHTML = '';
+    currentPage = 1;
 
     try {
+        const fetchLimit = limit === 'all' ? 10000 : limit;
         const response = await fetch(
-            `${API_BASE_URL}/top-games?sort=${sortBy}&min_reviews=${minReviews}&limit=${limit}`
+            `${API_BASE_URL}/top-games?sort=${sortBy}&min_reviews=${minReviews}&limit=${fetchLimit}`
         );
         const data = await response.json();
 
         if (data.success && data.games && data.games.length > 0) {
-            displayGames(data.games);
-            showStatsArea(data.games.length);
+            allGames = data.games;
+            
+            if (limit === 'all') {
+                displayPaginatedGames();
+                showPagination();
+                showStatsArea(data.games.length);
+            } else {
+                displayGames(data.games);
+                showStatsArea(data.games.length);
+            }
         } else {
             showEmptyState();
         }
@@ -36,12 +50,99 @@ async function loadTopGames() {
     }
 }
 
-function displayGames(games) {
+function displayPaginatedGames() {
+    const startIndex = (currentPage - 1) * GAMES_PER_PAGE;
+    const endIndex = startIndex + GAMES_PER_PAGE;
+    const gamesToShow = allGames.slice(startIndex, endIndex);
+    
+    displayGames(gamesToShow, startIndex);
+    updatePagination();
+}
+
+function goToPage(page) {
+    currentPage = page;
+    displayPaginatedGames();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function updatePagination() {
+    const totalPages = Math.ceil(allGames.length / GAMES_PER_PAGE);
+    const paginationList = document.getElementById('paginationList');
+    paginationList.innerHTML = '';
+
+    const maxVisiblePages = 7;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    // Botão Anterior
+    const prevLi = document.createElement('li');
+    prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+    prevLi.innerHTML = `
+        <a class="page-link" href="#" onclick="goToPage(${currentPage - 1}); return false;">
+            <i class="bi bi-chevron-left"></i> Anterior
+        </a>
+    `;
+    paginationList.appendChild(prevLi);
+
+    // Primeira página
+    if (startPage > 1) {
+        const firstLi = document.createElement('li');
+        firstLi.className = 'page-item';
+        firstLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(1); return false;">1</a>`;
+        paginationList.appendChild(firstLi);
+
+        if (startPage > 2) {
+            const dotsLi = document.createElement('li');
+            dotsLi.className = 'page-item disabled';
+            dotsLi.innerHTML = `<span class="page-link">...</span>`;
+            paginationList.appendChild(dotsLi);
+        }
+    }
+
+    // Páginas visíveis
+    for (let i = startPage; i <= endPage; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${i}); return false;">${i}</a>`;
+        paginationList.appendChild(li);
+    }
+
+    // Última página
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            const dotsLi = document.createElement('li');
+            dotsLi.className = 'page-item disabled';
+            dotsLi.innerHTML = `<span class="page-link">...</span>`;
+            paginationList.appendChild(dotsLi);
+        }
+
+        const lastLi = document.createElement('li');
+        lastLi.className = 'page-item';
+        lastLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${totalPages}); return false;">${totalPages}</a>`;
+        paginationList.appendChild(lastLi);
+    }
+
+    // Botão Próximo
+    const nextLi = document.createElement('li');
+    nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+    nextLi.innerHTML = `
+        <a class="page-link" href="#" onclick="goToPage(${currentPage + 1}); return false;">
+            Próximo <i class="bi bi-chevron-right"></i>
+        </a>
+    `;
+    paginationList.appendChild(nextLi);
+}
+
+function displayGames(games, startIndex = 0) {
     const grid = document.getElementById('gamesGrid');
     grid.innerHTML = '';
 
     games.forEach((game, index) => {
-        const rank = index + 1;
+        const rank = startIndex + index + 1;
         const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
         
         const percentage = parseFloat(game.positive_percentage) || 0;
@@ -292,6 +393,14 @@ function showStatsArea(total) {
 
 function hideStatsArea() {
     document.getElementById('statsArea').classList.add('d-none');
+}
+
+function showPagination() {
+    document.getElementById('paginationArea').classList.remove('d-none');
+}
+
+function hidePagination() {
+    document.getElementById('paginationArea').classList.add('d-none');
 }
 
 function showAlert(message, type) {

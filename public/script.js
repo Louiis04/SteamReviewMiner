@@ -412,6 +412,286 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function highlightKeywords(text, keywords) {
+    if (!text || !keywords || keywords.length === 0) {
+        return escapeHtml(text);
+    }
+
+    let highlightedText = escapeHtml(text);
+    
+    keywords.forEach(keyword => {
+        if (keyword.length < 2) return;
+        
+        const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        highlightedText = highlightedText.replace(regex, '<mark class="keyword-highlight">$1</mark>');
+    });
+
+    return highlightedText;
+}
+
+let currentSearchKeywords = [];
+
+async function searchByKeywords() {
+    const keywordsInput = document.getElementById('keywordsInput');
+    const keywords = keywordsInput.value.trim();
+
+    if (!keywords || keywords.length < 2) {
+        showAlert('Por favor, digite ao menos uma palavra-chave para buscar!', 'warning');
+        return;
+    }
+
+    currentSearchKeywords = keywords.split(/[,;\s]+/).filter(k => k.length > 0);
+
+    const resultsContainer = document.getElementById('keywordSearchResults');
+    const gamesContainer = document.getElementById('keywordGamesContainer');
+    const titleElement = document.getElementById('keywordSearchTitle');
+
+    resultsContainer.classList.remove('d-none');
+    gamesContainer.innerHTML = `
+        <div class="col-12 text-center py-4">
+            <div class="spinner-border text-info" role="status">
+                <span class="visually-hidden">Buscando...</span>
+            </div>
+            <p class="mt-2 text-muted">Buscando jogos nos comentários...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/search/keywords?keywords=${encodeURIComponent(keywords)}`);
+        const data = await response.json();
+
+        if (!data.success) {
+            gamesContainer.innerHTML = `
+                <div class="col-12 text-center py-4">
+                    <i class="bi bi-exclamation-circle text-warning" style="font-size: 3rem;"></i>
+                    <p class="mt-2">${data.message || 'Erro ao buscar jogos'}</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (!data.games || data.games.length === 0) {
+            gamesContainer.innerHTML = `
+                <div class="col-12 text-center py-4">
+                    <i class="bi bi-search" style="font-size: 3rem; color: #999;"></i>
+                    <p class="mt-2 text-muted">Nenhum jogo encontrado com essas palavras-chave nos comentários.</p>
+                    <small class="text-muted">Tente palavras-chave diferentes ou mais gerais.</small>
+                </div>
+            `;
+            return;
+        }
+
+        titleElement.textContent = `(${data.total} ${data.total === 1 ? 'jogo encontrado' : 'jogos encontrados'})`;
+
+        const gamesHTML = data.games.map((game, index) => {
+            const percentage = game.positive_percentage || 0;
+            const totalReviews = game.total_reviews || 0;
+            const commentMatches = game.comment_matches || 0;
+            const relevanceScore = Math.round(game.relevance_score || 0);
+
+            return `
+                <div class="col">
+                    <div class="card h-100 shadow-sm keyword-game-card">
+                        <div class="position-relative">
+                            <img 
+                                src="${game.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${game.app_id}/header.jpg`}" 
+                                class="card-img-top" 
+                                alt="${escapeHtml(game.name)}"
+                                onerror="this.src='https://via.placeholder.com/460x215?text=Sem+Imagem'">
+                            <span class="badge bg-info position-absolute top-0 end-0 m-2">
+                                #${index + 1}
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            <h6 class="card-title">${escapeHtml(game.name)}</h6>
+                            
+                            <div class="mb-2">
+                                <span class="badge bg-success me-1">${percentage}% Positivo</span>
+                                <span class="badge bg-secondary">${formatNumber(totalReviews)} reviews</span>
+                            </div>
+
+                            <div class="keyword-match-info mb-2">
+                                <small class="text-info">
+                                    <i class="bi bi-chat-dots-fill"></i> 
+                                    ${commentMatches} ${commentMatches === 1 ? 'comentário encontrado' : 'comentários encontrados'}
+                                </small>
+                                <br>
+                                <small class="text-muted">
+                                    <i class="bi bi-star-fill"></i> Score de relevância: ${relevanceScore}
+                                </small>
+                            </div>
+
+                            ${game.short_description ? 
+                                `<p class="card-text small text-muted">${escapeHtml(game.short_description).substring(0, 100)}...</p>` 
+                                : ''}
+
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-sm btn-primary" onclick="addGameFromSearch('${game.app_id}')">
+                                    <i class="bi bi-plus-circle"></i> Adicionar à Lista
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="showComments('${game.app_id}')">
+                                    <i class="bi bi-chat-left-text"></i> Ver Todos os Comentários
+                                </button>
+                                <button class="btn btn-sm btn-outline-info" onclick="showKeywordComments('${game.app_id}', '${escapeHtml(game.name)}')">
+                                    <i class="bi bi-search"></i> Ver Comentários Relevantes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        gamesContainer.innerHTML = gamesHTML;
+
+    } catch (error) {
+        console.error('Erro ao buscar por palavras-chave:', error);
+        gamesContainer.innerHTML = `
+            <div class="col-12 text-center py-4">
+                <i class="bi bi-exclamation-triangle text-danger" style="font-size: 3rem;"></i>
+                <p class="mt-2 text-danger">Erro ao buscar jogos. Tente novamente.</p>
+            </div>
+        `;
+    }
+}
+
+async function addGameFromSearch(appId) {
+    if (games[appId]) {
+        showAlert('Este jogo já foi adicionado à lista!', 'info');
+        return;
+    }
+
+    showLoading(true);
+
+    try {
+        const reviewsResponse = await fetch(`${API_BASE_URL}/game/reviews/${appId}?num_per_page=0`);
+        const reviewsData = await reviewsResponse.json();
+
+        if (!reviewsData.success) {
+            throw new Error('Jogo não encontrado ou sem avaliações');
+        }
+
+        const detailsResponse = await fetch(`${API_BASE_URL}/game/details/${appId}`);
+        const detailsData = await detailsResponse.json();
+
+        let gameName = `Jogo ${appId}`;
+        if (detailsData[appId] && detailsData[appId].success) {
+            gameName = detailsData[appId].data.name;
+        }
+
+        games[appId] = {
+            appId: appId,
+            name: gameName,
+            reviewsData: reviewsData.query_summary
+        };
+
+        renderGameCard(appId);
+        
+        showAlert(`Jogo "${gameName}" adicionado com sucesso!`, 'success');
+
+        document.getElementById('gamesContainer').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    } catch (error) {
+        console.error('Erro ao adicionar jogo:', error);
+        showAlert('Erro ao adicionar jogo à lista.', 'danger');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function showKeywordComments(appId, gameName) {
+    if (!currentSearchKeywords || currentSearchKeywords.length === 0) {
+        showAlert('Nenhuma palavra-chave definida. Faça uma busca primeiro.', 'warning');
+        return;
+    }
+
+    currentModalAppId = appId;
+    
+    document.getElementById('modalGameTitle').innerHTML = `
+        Comentários Relevantes - ${gameName}
+        <br><small class="text-muted">Palavras-chave: ${currentSearchKeywords.join(', ')}</small>
+    `;
+    document.getElementById('modalCommentsBody').innerHTML = '<div class="loading-spinner"><div class="spinner-border text-info"></div></div>';
+    
+    const modal = new bootstrap.Modal(document.getElementById('commentsModal'));
+    modal.show();
+
+    document.getElementById('loadMoreBtn').classList.add('d-none');
+
+    try {
+        const keywords = currentSearchKeywords.join(',');
+        const response = await fetch(`${API_BASE_URL}/game/comments/keywords/${appId}?keywords=${encodeURIComponent(keywords)}&limit=20`);
+        const data = await response.json();
+
+        if (!data.success || !data.comments || data.comments.length === 0) {
+            document.getElementById('modalCommentsBody').innerHTML = `
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-chat-left" style="font-size: 3rem;"></i>
+                    <p class="mt-2">Nenhum comentário encontrado com essas palavras-chave.</p>
+                </div>
+            `;
+            return;
+        }
+
+        const commentsHTML = data.comments.map(review => renderKeywordComment(review, currentSearchKeywords)).join('');
+        document.getElementById('modalCommentsBody').innerHTML = commentsHTML;
+
+    } catch (error) {
+        console.error('Erro ao carregar comentários com palavras-chave:', error);
+        document.getElementById('modalCommentsBody').innerHTML = `
+            <div class="alert alert-danger">
+                Erro ao carregar comentários. Tente novamente.
+            </div>
+        `;
+    }
+}
+
+function renderKeywordComment(review, keywords) {
+    const date = new Date(review.timestamp_created * 1000).toLocaleDateString('pt-BR');
+    const votesUp = review.votes_up || 0;
+    const votesDown = review.votes_down || 0;
+    const votedUp = review.voted_up ? 'Positiva' : 'Negativa';
+    const voteClass = review.voted_up ? 'text-success' : 'text-danger';
+    const voteIcon = review.voted_up ? 'bi-hand-thumbs-up-fill' : 'bi-hand-thumbs-down-fill';
+    
+    const highlightedReview = highlightKeywords(review.review, keywords);
+
+    return `
+        <div class="comment-card card p-3 keyword-comment-card">
+            <div class="comment-header">
+                <span class="comment-author">
+                    <i class="bi bi-person-circle"></i> ${review.author?.steamid || 'Usuário Steam'}
+                </span>
+                <span class="comment-date">${date}</span>
+            </div>
+            <div class="${voteClass} mb-2">
+                <i class="${voteIcon}"></i> <strong>${votedUp}</strong>
+            </div>
+            <div class="comment-text">
+                ${highlightedReview || 'Sem texto de comentário.'}
+            </div>
+            <div class="comment-stats">
+                <div class="vote-indicator vote-up">
+                    <i class="bi bi-hand-thumbs-up"></i>
+                    <span>${formatNumber(votesUp)} úteis</span>
+                </div>
+                <div class="vote-indicator vote-down">
+                    <i class="bi bi-hand-thumbs-down"></i>
+                    <span>${formatNumber(votesDown)}</span>
+                </div>
+                ${review.author?.playtime_forever ? 
+                    `<div class="text-muted">
+                        <i class="bi bi-clock"></i> ${(review.author.playtime_forever / 60).toFixed(1)}h jogadas
+                    </div>` : ''}
+                ${review.comment_relevance ? 
+                    `<div class="text-info">
+                        <i class="bi bi-star-fill"></i> Relevância: ${review.comment_relevance}
+                    </div>` : ''}
+            </div>
+        </div>
+    `;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Steam Review App carregada!');
 });

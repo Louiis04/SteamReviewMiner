@@ -63,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_review_stats_app_id ON review_stats(app_id);
 CREATE INDEX IF NOT EXISTS idx_games_name ON games(name);
 CREATE INDEX IF NOT EXISTS idx_games_name_lower ON games(LOWER(name));
 CREATE INDEX IF NOT EXISTS idx_search_cache_term ON game_search_cache(LOWER(search_term));
+CREATE INDEX IF NOT EXISTS idx_comments_review_fulltext ON comments USING GIN(to_tsvector('simple', review));
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

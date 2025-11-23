@@ -294,3 +294,52 @@ body {
     text-align: center;
 }
 
+.keyword-game-card {
+    transition: all 0.3s ease;
+}
+
+.keyword-game-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.15) !important;
+}
+
+.keyword-match-info {
+    background: #f8f9fa;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border-left: 3px solid #17a2b8;
+}
+
+.card-img-top {
+    height: 200px;
+    object-fit: cover;
+}
+
+.border-info {
+    border-width: 2px !important;
+}
+
+.keyword-highlight {
+    background: linear-gradient(120deg, #f6d365 0%, #fda085 100%);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: 600;
+    color: #000;
+    box-shadow: 0 2px 4px rgba(253, 160, 133, 0.3);
+}
+
+.keyword-comment-card {
+    border-left: 4px solid #17a2b8 !important;
+    background: linear-gradient(to right, #f8f9fa 0%, #ffffff 10%);
+}
+
+.keyword-comment-card:hover {
+    border-left-color: #0056b3 !important;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15) !important;
+}
+
+.comment-text {
+    line-height: 1.8;
+    word-wrap: break-word;
+}
+

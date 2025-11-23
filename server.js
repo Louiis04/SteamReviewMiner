@@ -390,6 +390,143 @@ app.get('/api/top-games', async (req, res) => {
     }
 });
 
+app.get('/api/search/keywords', async (req, res) => {
+    try {
+        const { keywords, limit = 20, min_matches = 1 } = req.query;
+
+        if (!keywords || keywords.trim().length === 0) {
+            return res.json({ 
+                success: false, 
+                message: 'Por favor, forneça pelo menos uma palavra-chave',
+                games: [] 
+            });
+        }
+
+        const keywordArray = keywords.split(/[,;\s]+/).filter(k => k.length > 0);
+
+        if (keywordArray.length === 0) {
+            return res.json({ 
+                success: false, 
+                message: 'Nenhuma palavra-chave válida fornecida',
+                games: [] 
+            });
+        }
+
+        console.log(`🔍 Buscando jogos com palavras-chave: [${keywordArray.join(', ')}]`);
+
+        const games = await db.searchGamesByKeywords(
+            keywordArray, 
+            parseInt(limit), 
+            parseInt(min_matches)
+        );
+
+        if (games.length === 0) {
+            console.log(`📦 Nenhum jogo encontrado com as palavras-chave fornecidas`);
+            return res.json({
+                success: true,
+                games: [],
+                message: 'Nenhum jogo encontrado com essas palavras-chave nos comentários',
+                keywords: keywordArray
+            });
+        }
+
+        console.log(`📦 Encontrados ${games.length} jogos com as palavras-chave`);
+        res.json({
+            success: true,
+            games: games,
+            total: games.length,
+            keywords: keywordArray
+        });
+
+    } catch (error) {
+        console.error('Erro ao buscar jogos por palavras-chave:', error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Erro ao buscar jogos por palavras-chave',
+            details: error.message,
+            games: []
+        });
+    }
+});
+
+app.get('/api/game/comments/keywords/:appId', async (req, res) => {
+    try {
+        const { appId } = req.params;
+        const { keywords, limit = 10 } = req.query;
+
+        if (!keywords || keywords.trim().length === 0) {
+            return res.json({ 
+                success: false, 
+                message: 'Por favor, forneça pelo menos uma palavra-chave',
+                comments: [] 
+            });
+        }
+
+        const keywordArray = keywords.split(/[,;\s]+/).filter(k => k.length > 0);
+
+        if (keywordArray.length === 0) {
+            return res.json({ 
+                success: false, 
+                message: 'Nenhuma palavra-chave válida fornecida',
+                comments: [] 
+            });
+        }
+
+        console.log(`🔍 Buscando comentários do jogo ${appId} com palavras-chave: [${keywordArray.join(', ')}]`);
+
+        const comments = await db.getCommentsWithKeywords(appId, keywordArray, parseInt(limit));
+
+        if (comments.length === 0) {
+            return res.json({
+                success: true,
+                comments: [],
+                message: 'Nenhum comentário encontrado com essas palavras-chave',
+                keywords: keywordArray
+            });
+        }
+
+        const formattedComments = comments.map(c => ({
+            recommendationid: c.recommendationid,
+            author: {
+                steamid: c.author_steamid,
+                playtime_forever: c.author_playtime_forever,
+                playtime_at_review_time: c.author_playtime_last_two_weeks
+            },
+            voted_up: c.voted_up,
+            votes_up: c.votes_up,
+            votes_down: c.votes_down,
+            votes_funny: c.votes_funny,
+            weighted_vote_score: parseFloat(c.weighted_vote_score),
+            comment_count: c.comment_count,
+            steam_purchase: c.steam_purchase,
+            received_for_free: c.received_for_free,
+            written_during_early_access: c.written_during_early_access,
+            review: c.review,
+            timestamp_created: parseInt(c.timestamp_created),
+            timestamp_updated: parseInt(c.timestamp_updated),
+            language: c.language,
+            comment_relevance: c.comment_relevance
+        }));
+
+        console.log(`📦 Encontrados ${comments.length} comentários relevantes`);
+        res.json({
+            success: true,
+            comments: formattedComments,
+            total: formattedComments.length,
+            keywords: keywordArray
+        });
+
+    } catch (error) {
+        console.error('Erro ao buscar comentários com palavras-chave:', error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Erro ao buscar comentários',
+            details: error.message,
+            comments: []
+        });
+    }
+});
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

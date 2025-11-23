@@ -346,6 +346,121 @@ async function getTopRatedGames(limit = 50, minReviews = 100, sortBy = 'rating')
     return result.rows;
 }
 
+async function searchGamesByKeywords(keywords, limit = 20, minMatches = 1) {
+    if (!keywords || keywords.length === 0) {
+        return [];
+    }
+
+    const keywordList = keywords.map(kw => kw.trim().toLowerCase()).filter(kw => kw.length > 0);
+    
+    if (keywordList.length === 0) {
+        return [];
+    }
+
+    const tsQuery = keywordList.join(' | ');
+
+    const query = `
+        WITH keyword_matches AS (
+            SELECT 
+                c.app_id,
+                COUNT(DISTINCT c.id) as comment_matches,
+                -- Contar quantas palavras-chave diferentes aparecem
+                SUM(
+                    CASE 
+                        WHEN to_tsvector('simple', c.review) @@ to_tsquery('simple', $1) THEN 1
+                        ELSE 0
+                    END
+                ) as keyword_score,
+                -- Soma dos votos úteis dos comentários que contêm as palavras
+                SUM(
+                    CASE 
+                        WHEN to_tsvector('simple', c.review) @@ to_tsquery('simple', $1) 
+                        THEN c.votes_up 
+                        ELSE 0
+                    END
+                ) as total_useful_votes
+            FROM comments c
+            WHERE to_tsvector('simple', c.review) @@ to_tsquery('simple', $1)
+            GROUP BY c.app_id
+            HAVING COUNT(DISTINCT c.id) >= $2
+        )
+        SELECT 
+            g.app_id,
+            g.name,
+            g.short_description,
+            g.header_image,
+            g.developers,
+            g.publishers,
+            rs.total_reviews,
+            rs.total_positive,
+            rs.total_negative,
+            rs.review_score,
+            rs.review_score_desc,
+            CAST(ROUND(CAST(rs.total_positive AS NUMERIC) / NULLIF(rs.total_reviews, 0) * 100, 1) AS NUMERIC) as positive_percentage,
+            km.comment_matches,
+            km.keyword_score,
+            km.total_useful_votes,
+            -- Score de relevância (combina número de matches, score de keywords e votos úteis)
+            (km.comment_matches * 10 + km.keyword_score * 5 + COALESCE(km.total_useful_votes, 0) * 0.1) as relevance_score
+        FROM keyword_matches km
+        INNER JOIN games g ON g.app_id = km.app_id
+        LEFT JOIN review_stats rs ON rs.app_id = g.app_id
+        ORDER BY relevance_score DESC, rs.total_reviews DESC
+        LIMIT $3
+    `;
+
+    const result = await pool.query(query, [tsQuery, minMatches, limit]);
+    return result.rows;
+}
+
+async function getCommentsWithKeywords(appId, keywords, limit = 10) {
+    if (!keywords || keywords.length === 0) {
+        return [];
+    }
+
+    const keywordList = keywords.map(kw => kw.trim().toLowerCase()).filter(kw => kw.length > 0);
+    
+    if (keywordList.length === 0) {
+        return [];
+    }
+
+    const tsQuery = keywordList.join(' | ');
+
+    const query = `
+        SELECT 
+            c.id,
+            c.app_id,
+            c.recommendationid,
+            c.author_steamid,
+            c.author_playtime_forever,
+            c.author_playtime_last_two_weeks,
+            c.voted_up,
+            c.votes_up,
+            c.votes_down,
+            c.votes_funny,
+            c.weighted_vote_score,
+            c.comment_count,
+            c.steam_purchase,
+            c.received_for_free,
+            c.written_during_early_access,
+            c.review,
+            c.timestamp_created,
+            c.timestamp_updated,
+            c.language,
+            c.created_at,
+            -- Calcular relevância do comentário
+            (c.votes_up * 2 + c.votes_funny) as comment_relevance
+        FROM comments c
+        WHERE c.app_id = $1
+        AND to_tsvector('simple', c.review) @@ to_tsquery('simple', $2)
+        ORDER BY comment_relevance DESC, c.timestamp_created DESC
+        LIMIT $3
+    `;
+
+    const result = await pool.query(query, [appId, tsQuery, limit]);
+    return result.rows;
+}
+
 module.exports = {
     pool,
     getGame,
@@ -364,4 +479,6 @@ module.exports = {
     saveSearchCache,
     getSearchCache,
     getTopRatedGames,
+    searchGamesByKeywords,
+    getCommentsWithKeywords,
 };

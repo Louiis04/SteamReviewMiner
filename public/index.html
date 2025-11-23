@@ -25,6 +25,7 @@
     </nav>
 
     <div class="container">
+        <!-- Busca por Nome/AppID -->
         <div class="card shadow-sm mb-4">
             <div class="card-body">
                 <h5 class="card-title mb-3">Buscar Jogo da Steam</h5>
@@ -53,6 +54,47 @@
                     <small class="text-muted">
                         💡 Digite o nome do jogo ou AppID. Exemplos: "Counter-Strike", "Dota", ou "730"
                     </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4 border-info">
+            <div class="card-body">
+                <h5 class="card-title mb-3">
+                    <i class="bi bi-chat-square-text text-info"></i> Buscar por Palavras-Chave nos Comentários
+                </h5>
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <input 
+                            type="text" 
+                            id="keywordsInput" 
+                            class="form-control" 
+                            placeholder="Digite palavras-chave separadas por vírgula (ex: ação, terror, top, bonzao)"
+                            onkeypress="if(event.key === 'Enter') searchByKeywords()">
+                    </div>
+                    <div class="col-md-4">
+                        <button onclick="searchByKeywords()" class="btn btn-info w-100 text-white">
+                            <i class="bi bi-search"></i> Buscar por Comentários
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        💡 Busca jogos cujos comentários contêm as palavras-chave. Ex: "ação, terror, suspense"
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div id="keywordSearchResults" class="card shadow-sm mb-4 d-none">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-trophy"></i> Jogos Encontrados
+                    <span id="keywordSearchTitle"></span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="keywordGamesContainer" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
                 </div>
             </div>
         </div>

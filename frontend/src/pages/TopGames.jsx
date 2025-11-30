@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import AlertStack from '../components/AlertStack.jsx';
 import CommentsModal from '../components/CommentsModal.jsx';
 import { useAlerts } from '../hooks/useAlerts.js';
 import { API_BASE_URL } from '../config.js';
 import { formatNumber } from '../utils/formatters.js';
+import { useAuth } from '../hooks/useAuth.js';
 
 const GAMES_PER_PAGE = 10;
 
@@ -52,7 +54,7 @@ const getRatingClass = (percentage) => {
   return 'average';
 };
 
-const TopGameCard = ({ game, rank, onShowComments }) => {
+const TopGameCard = ({ game, rank, onShowComments, onToggleFavorite, isFavorite, favoriteDisabled }) => {
   const positivePercentage = Number(game.positive_percentage ?? 0).toFixed(1);
   const ratingClass = getRatingClass(Number(positivePercentage));
   const developers = game.developers || '';
@@ -117,18 +119,29 @@ const TopGameCard = ({ game, rank, onShowComments }) => {
             </p>
           ) : null}
 
-          <div className="game-footer">
-            <button className="btn btn-primary btn-view-comments" onClick={onShowComments}>
-              <i className="bi bi-chat-left-text" /> Ver Comentários
-            </button>
-            <a
-              href={`https://store.steampowered.com/app/${game.app_id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-dark btn-steam-link"
+          <div className="game-footer flex-column gap-2">
+            <button
+              type="button"
+              className={`btn btn-view-comments ${isFavorite ? 'btn-warning text-dark' : 'btn-outline-warning'}`}
+              onClick={onToggleFavorite}
+              disabled={favoriteDisabled}
             >
-              <i className="bi bi-steam" />
-            </a>
+              <i className={isFavorite ? 'bi bi-star-fill' : 'bi bi-star'} />{' '}
+              {isFavorite ? 'Nos favoritos' : 'Favoritar'}
+            </button>
+            <div className="d-flex gap-2">
+              <button className="btn btn-primary btn-view-comments flex-fill" onClick={onShowComments}>
+                <i className="bi bi-chat-left-text" /> Ver Comentários
+              </button>
+              <a
+                href={`https://store.steampowered.com/app/${game.app_id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-dark btn-steam-link"
+              >
+                <i className="bi bi-steam" />
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -241,6 +254,7 @@ const Pagination = ({ totalPages, currentPage, onChange }) => {
 
 const TopGames = () => {
   const { alerts, pushAlert, dismissAlert } = useAlerts();
+  const { user, favorites, toggleFavorite, requireAuth, openAuthDialog } = useAuth();
   const [filters, setFilters] = useState({ sort: 'rating', minReviews: '100', limit: '50' });
   const [games, setGames] = useState([]);
   const [allGames, setAllGames] = useState([]);
@@ -250,6 +264,27 @@ const TopGames = () => {
   const [modalState, setModalState] = useState(initialModalState);
   const [isEmpty, setIsEmpty] = useState(false);
   const [preloadLoading, setPreloadLoading] = useState(false);
+  const [favoritePending, setFavoritePending] = useState(() => new Set());
+
+  const favoritesSet = useMemo(
+    () => new Set(favorites.map((fav) => fav.app_id?.toString())),
+    [favorites],
+  );
+
+  const setPending = useCallback((appId, pending) => {
+    setFavoritePending((prev) => {
+      const next = new Set(prev);
+      if (!appId) {
+        return prev;
+      }
+      if (pending) {
+        next.add(appId);
+      } else {
+        next.delete(appId);
+      }
+      return next;
+    });
+  }, []);
 
   const isPaginated = filters.limit === 'all';
 
@@ -375,6 +410,35 @@ const TopGames = () => {
 
   const rankOffset = isPaginated ? (currentPage - 1) * GAMES_PER_PAGE : 0;
 
+  const handleToggleFavorite = useCallback(
+    async (game) => {
+      const appId = game.app_id?.toString();
+      if (!appId) {
+        return;
+      }
+      if (!requireAuth()) {
+        pushAlert('Faça login para salvar favoritos.', 'info');
+        return;
+      }
+      const alreadyFavorite = favoritesSet.has(appId);
+      setPending(appId, true);
+      try {
+        await toggleFavorite(appId);
+        pushAlert(
+          alreadyFavorite
+            ? `Jogo "${game.name}" removido dos favoritos.`
+            : `Jogo "${game.name}" adicionado aos favoritos.`,
+          'success',
+        );
+      } catch (error) {
+        pushAlert(error.message ?? 'Erro ao atualizar favoritos.', 'danger');
+      } finally {
+        setPending(appId, false);
+      }
+    },
+    [favoritesSet, pushAlert, requireAuth, setPending, toggleFavorite],
+  );
+
   return (
     <>
       <AlertStack alerts={alerts} onDismiss={dismissAlert} />
@@ -442,6 +506,31 @@ const TopGames = () => {
               </button>
             </div>
           </div>
+
+            {user ? (
+              <div className="alert alert-warning d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                <div>
+                  <strong>{favorites.length}</strong> jogos salvos.
+                  {' '}
+                  Marque favoritos diretamente no ranking e acompanhe tudo na sua página de perfil.
+                </div>
+                <Link to="/perfil" className="btn btn-sm btn-outline-dark text-nowrap">
+                  <i className="bi bi-person" /> Abrir perfil
+                </Link>
+              </div>
+            ) : (
+              <div className="alert alert-secondary d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+                <div>Crie uma conta para salvar jogos do ranking e acessá-los rapidamente.</div>
+                <div className="d-flex gap-2">
+                  <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => openAuthDialog('login')}>
+                    Entrar
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => openAuthDialog('register')}>
+                    Criar conta
+                  </button>
+                </div>
+              </div>
+            )}
         </div>
       </div>
 
@@ -466,6 +555,9 @@ const TopGames = () => {
                     game={game}
                     rank={rankOffset + index + 1}
                     onShowComments={() => handleShowComments(game)}
+                    onToggleFavorite={() => handleToggleFavorite(game)}
+                    isFavorite={favoritesSet.has(game.app_id?.toString())}
+                    favoriteDisabled={favoritePending.has(game.app_id?.toString())}
                   />
                 ))}
               </div>

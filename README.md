@@ -62,6 +62,7 @@ O Vite já está configurado para encaminhar requisições começadas em `/api` 
 | `DB_HOST/PORT/NAME`   | Atenção às credenciais do PostgreSQL        | vide `.env.example` |
 | `DB_USER/DB_PASSWORD` | Usuário de banco                            | `steamuser/steampass123` |
 | `CACHE_EXPIRATION_HOURS` | Validade dos dados persistidos          | `24`             |
+| `JWT_SECRET`           | Segredo usado para assinar tokens JWT (obrigatório em produção) | `steamreviewminer-dev-secret` |
 
 ### Frontend (`frontend/.env` opcional)
 
@@ -76,6 +77,7 @@ O Vite já está configurado para encaminhar requisições começadas em `/api` 
 | ---------- | ----------------- | --------------------------------------------------- |
 | `backend`  | `npm run dev`     | Nodemon + Express com hot-reload                    |
 | `backend`  | `npm start`       | Servidor Express em modo produção                   |
+| `backend`  | `npm run db:init` | Aplica `init.sql` diretamente no PostgreSQL configurado |
 | `frontend` | `npm run dev`     | Vite com HMR e proxy `/api`                         |
 | `frontend` | `npm run build`   | Build otimizado para servir via Express             |
 | `frontend` | `npm run preview` | Prévia local do build                               |
@@ -93,6 +95,7 @@ O Vite já está configurado para encaminhar requisições começadas em `/api` 
 - **Busca por palavras-chave** em comentários, com destaque no modal e ranking de relevância.
 - **Top Jogos** em `/top`: filtros de ordenação, mínimo de reviews, opções de limite/todos, paginação amigável e botão para pré-carregar o banco.
 - **Comentários detalhados** com paginação via cursor, contadores e destaques visuais.
+- **Autenticação e favoritos**: usuários podem criar conta, salvar jogos favoritos e visualizar tudo no painel Overview/Home/Perfil (tokens JWT protegidos por middleware).
 
 ## Banco de Dados + Docker
 

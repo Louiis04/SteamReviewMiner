@@ -3,6 +3,7 @@ import './App.css';
 import Home from './pages/Home.jsx';
 import TopGames from './pages/TopGames.jsx';
 import Overview from './pages/Overview.jsx';
+import Profile from './pages/Profile.jsx';
 import { useAuth } from './hooks/useAuth.js';
 
 const AppLayout = () => {
@@ -36,6 +37,14 @@ const AppLayout = () => {
             >
               <i className="bi bi-trophy" /> Top Jogos
             </NavLink>
+            {user ? (
+              <NavLink
+                to="/perfil"
+                className={({ isActive }) => `btn btn-sm ${isActive ? 'btn-primary' : 'btn-outline-light'}`}
+              >
+                <i className="bi bi-person" /> Perfil
+              </NavLink>
+            ) : null}
           </div>
           <div className="d-flex flex-wrap gap-2 align-items-center">
             {user ? (
@@ -50,9 +59,9 @@ const AppLayout = () => {
                     </span>
                   ) : null}
                 </span>
-                <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openAuthDialog('login')}>
-                  <i className="bi bi-person-circle" /> Conta
-                </button>
+                <NavLink to="/perfil" className="btn btn-outline-light btn-sm">
+                  <i className="bi bi-person-circle" /> Perfil
+                </NavLink>
                 <button type="button" className="btn btn-outline-danger btn-sm" onClick={logout}>
                   <i className="bi bi-box-arrow-right" /> Sair
                 </button>
@@ -86,6 +95,7 @@ function App() {
           <Route path="/explorar" element={<Home />} />
           <Route path="/analisar" element={<Navigate to="/explorar" replace />} />
           <Route path="/top" element={<TopGames />} />
+          <Route path="/perfil" element={<Profile />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

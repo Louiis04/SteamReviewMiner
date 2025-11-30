@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 CREATE TABLE IF NOT EXISTS games (
     app_id VARCHAR(20) PRIMARY KEY,
     name VARCHAR(500) NOT NULL,
@@ -82,3 +84,26 @@ CREATE TRIGGER update_review_stats_updated_at BEFORE UPDATE ON review_stats
 COMMENT ON TABLE games IS 'Armazena informações básicas dos jogos da Steam';
 COMMENT ON TABLE review_stats IS 'Armazena estatísticas agregadas de reviews dos jogos';
 COMMENT ON TABLE comments IS 'Armazena reviews/comentários individuais dos usuários';
+
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name VARCHAR(120),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_favorites (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    app_id VARCHAR(20) NOT NULL REFERENCES games(app_id) ON DELETE CASCADE,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, app_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_favorites_app ON user_favorites(app_id);
+
+COMMENT ON TABLE users IS 'Usuários autenticados que podem salvar favoritos';
+COMMENT ON TABLE user_favorites IS 'Relacionamento entre usuários e jogos favoritados';

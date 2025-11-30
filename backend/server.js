@@ -7,6 +7,8 @@ require('dotenv').config();
 
 const db = require('./db');
 const popularGames = require('./popularGames');
+const authRoutes = require('./routes/auth');
+const userFavoritesRoutes = require('./routes/userFavorites');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,6 +17,9 @@ const hasFrontendBuild = fs.existsSync(frontendDistPath);
 
 app.use(cors());
 app.use(express.json());
+
+app.use('/api/auth', authRoutes);
+app.use('/api/user', userFavoritesRoutes);
 
 if (hasFrontendBuild) {
     app.use(express.static(frontendDistPath));
@@ -343,6 +348,26 @@ app.get('/api/health', async (req, res) => {
         database: dbHealth,
         timestamp: new Date().toISOString()
     });
+});
+
+app.get('/api/jobs/metrics', async (req, res) => {
+    try {
+        const metrics = await db.getJobQueueMetrics();
+        res.json({ success: true, ...metrics });
+    } catch (error) {
+        console.error('Erro ao coletar métricas de jobs:', error.message);
+        res.status(500).json({ success: false, error: 'Erro ao coletar métricas de jobs', details: error.message });
+    }
+});
+
+app.get('/api/overview-metrics', async (req, res) => {
+    try {
+        const metrics = await db.getOverviewMetrics();
+        res.json({ success: true, ...metrics });
+    } catch (error) {
+        console.error('Erro ao carregar métricas gerais:', error.message);
+        res.status(500).json({ success: false, error: 'Erro ao carregar métricas gerais', details: error.message });
+    }
 });
 
 app.get('/api/preload', async (req, res) => {

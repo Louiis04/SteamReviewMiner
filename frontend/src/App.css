@@ -512,3 +512,45 @@ body {
   transform: none;
   box-shadow: none;
 }
+
+.auth-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 2000;
+}
+
+.auth-modal {
+  width: min(420px, 100%);
+  border: none;
+  border-radius: 1rem;
+}
+
+.auth-form .btn-link {
+  text-decoration: none;
+}
+
+.favorites-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.favorite-preview-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+}
+
+.favorite-preview-card p {
+  margin-bottom: 0.25rem;
+}
+
+.favorite-preview-card small {
+  color: #64748b;
+}

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AlertStack from '../components/AlertStack.jsx';
 import CommentsModal from '../components/CommentsModal.jsx';
 import { useAlerts } from '../hooks/useAlerts.js';
 import { API_BASE_URL } from '../config.js';
 import { formatNumber } from '../utils/formatters.js';
+import { useAuth } from '../hooks/useAuth.js';
 
 const initialModalState = {
   open: false,
@@ -16,7 +17,7 @@ const initialModalState = {
   keywords: [],
 };
 
-const GameCard = ({ game, onRemove, onShowComments }) => {
+const GameCard = ({ game, onRemove, onShowComments, onToggleFavorite, isFavorite, favoriteDisabled }) => {
   const totalReviews = game.reviewsData?.total_reviews ?? 0;
   const totalPositive = game.reviewsData?.total_positive ?? 0;
   const percentage = totalReviews > 0 ? ((totalPositive / totalReviews) * 100).toFixed(1) : '0.0';
@@ -65,6 +66,14 @@ const GameCard = ({ game, onRemove, onShowComments }) => {
             </div>
           </div>
 
+          <button
+            type="button"
+            className={`btn w-100 mt-2 ${isFavorite ? 'btn-warning text-dark' : 'btn-outline-warning'}`}
+            onClick={() => onToggleFavorite(game.appId, game.name)}
+            disabled={favoriteDisabled}
+          >
+            <i className={isFavorite ? 'bi bi-star-fill' : 'bi bi-star'} /> {isFavorite ? 'Nos seus favoritos' : 'Favoritar'}
+          </button>
           <button className="btn btn-primary w-100 mt-3" onClick={() => onShowComments(game.appId)}>
             <i className="bi bi-chat-left-text" /> Ver Comentários
           </button>
@@ -234,6 +243,26 @@ const Home = () => {
   const searchController = useRef();
   const searchCache = useRef(new Map());
   const searchWrapperRef = useRef(null);
+
+  const { user, favorites, toggleFavorite, requireAuth, openAuthDialog } = useAuth();
+  const [favoritePending, setFavoritePending] = useState(() => new Set());
+  const favoritesSet = useMemo(() => new Set(favorites.map((fav) => fav.app_id?.toString())), [favorites]);
+
+  const markPending = useCallback((appId, pending) => {
+    setFavoritePending((prev) => {
+      const next = new Set(prev);
+      const id = appId?.toString();
+      if (!id) {
+        return prev;
+      }
+      if (pending) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }, []);
 
   const [games, setGames] = useState([]);
   const [globalLoading, setGlobalLoading] = useState(false);
@@ -464,10 +493,44 @@ const Home = () => {
     }
   }, [keywordInput, pushAlert]);
 
+  const handleToggleFavorite = useCallback(async (appId, gameName) => {
+    const normalizedId = appId?.toString();
+    if (!normalizedId) {
+      return;
+    }
+    if (!requireAuth()) {
+      pushAlert('Faça login para salvar jogos favoritos.', 'info');
+      return;
+    }
+    const alreadyFavorite = favoritesSet.has(normalizedId);
+    markPending(normalizedId, true);
+    try {
+      await toggleFavorite(normalizedId);
+      pushAlert(
+        alreadyFavorite
+          ? `Jogo "${gameName}" removido dos favoritos.`
+          : `Jogo "${gameName}" adicionado aos favoritos.`,
+        'success',
+      );
+    } catch (error) {
+      pushAlert(error.message ?? 'Erro ao atualizar favoritos.', 'danger');
+    } finally {
+      markPending(normalizedId, false);
+    }
+  }, [favoritesSet, markPending, pushAlert, requireAuth, toggleFavorite]);
+
   const gamesContent = games.length ? (
     <div id="gamesContainer" className="row row-cols-1 row-cols-md-2 g-4">
       {games.map((game) => (
-        <GameCard key={game.appId} game={game} onRemove={handleRemoveGame} onShowComments={handleShowComments} />
+        <GameCard
+          key={game.appId}
+          game={game}
+          onRemove={handleRemoveGame}
+          onShowComments={handleShowComments}
+          onToggleFavorite={handleToggleFavorite}
+          isFavorite={favoritesSet.has(game.appId)}
+          favoriteDisabled={favoritePending.has(game.appId)}
+        />
       ))}
     </div>
   ) : (
@@ -561,6 +624,59 @@ const Home = () => {
           </div>
         </div>
       </div>
+
+      {user ? (
+            <div className="card shadow-sm mb-4 border-warning">
+              <div className="card-body">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div>
+                    <h5 className="card-title mb-1">Meus favoritos</h5>
+                    <p className="text-muted mb-0">Acesse rapidamente os jogos salvos.</p>
+                  </div>
+                  <span className="badge bg-warning text-dark">{favorites.length} jogos</span>
+                </div>
+                {favorites.length ? (
+                  <div className="favorites-preview">
+                    {favorites.slice(0, 4).map((fav) => (
+                      <div key={fav.app_id} className="favorite-preview-card">
+                        <p className="fw-semibold">{fav.name ?? `App ${fav.app_id}`}</p>
+                        <small>
+                          {formatNumber(fav.total_reviews ?? 0)} reviews · {fav.review_score_desc ?? 'N/A'}
+                        </small>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger mt-2"
+                          onClick={() => handleToggleFavorite(fav.app_id, fav.name ?? fav.app_id)}
+                          disabled={favoritePending.has(fav.app_id?.toString())}
+                        >
+                          <i className="bi bi-trash" /> Remover
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted mb-0">Use o botão de estrela nos cards para salvar seus jogos favoritos.</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="card shadow-sm mb-4 border border-warning-subtle">
+              <div className="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                <div>
+                  <h5 className="card-title mb-1">Crie sua lista de favoritos</h5>
+                  <p className="text-muted mb-0">Cadastre-se para salvar jogos e acessá-los em qualquer sessão.</p>
+                </div>
+                <div className="d-flex gap-2">
+                  <button type="button" className="btn btn-outline-secondary" onClick={() => openAuthDialog('login')}>
+                    Entrar
+                  </button>
+                  <button type="button" className="btn btn-warning" onClick={() => openAuthDialog('register')}>
+                    Criar conta
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
       <KeywordResults
         state={keywordState}

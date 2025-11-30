@@ -1,16 +1,13 @@
-# React + Vite
+# Steam Review Miner — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Este diretório contém o frontend React (Vite) da aplicação. Para instruções completas de instalação, scripts disponíveis e fluxo de desenvolvimento integrado com o backend Express, consulte o `README.md` na raiz do repositório.
 
-Currently, two official plugins are available:
+Comandos rápidos:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+npm install       # instalar dependências
+npm run dev       # iniciar o Vite com proxy para o backend em http://localhost:3000
+npm run build     # gerar build de produção (servida pelo backend)
+```
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Variáveis de ambiente opcionais podem ser definidas em `.env` (por exemplo, `VITE_API_BASE_URL` ou `VITE_PROXY_TARGET`). Veja o README raiz para mais detalhes.

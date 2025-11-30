@@ -354,3 +354,161 @@ body {
 .modal-open {
   overflow: hidden;
 }
+
+.stats-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 15px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-left: 5px;
+}
+
+.stats-badge.positive {
+  background: #d4edda;
+  color: #155724;
+}
+
+.stats-badge.negative {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.game-rank {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.2rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+.game-rank.gold {
+  background: linear-gradient(135deg, #ffd700 0%, #ffa500 100%);
+}
+
+.game-rank.silver {
+  background: linear-gradient(135deg, #c0c0c0 0%, #808080 100%);
+}
+
+.game-rank.bronze {
+  background: linear-gradient(135deg, #cd7f32 0%, #8b4513 100%);
+}
+
+.rating-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 8px 15px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 1.1rem;
+  z-index: 10;
+}
+
+.rating-badge.excellent {
+  background: linear-gradient(135deg, #00c851 0%, #007e33 100%);
+}
+
+.rating-badge.good {
+  background: linear-gradient(135deg, #2bbbad 0%, #1b7f77 100%);
+}
+
+.rating-badge.average {
+  background: linear-gradient(135deg, #ffbb33 0%, #ff8800 100%);
+}
+
+.game-stats {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.stat-row:last-child {
+  margin-bottom: 0;
+}
+
+.game-footer {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-view-comments {
+  flex: 1;
+  border-radius: 10px;
+  font-weight: 600;
+  padding: 10px;
+}
+
+.btn-steam-link {
+  width: 45px;
+  height: 45px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+#emptyState i {
+  opacity: 0.3;
+}
+
+#paginationArea {
+  margin: 40px 0;
+}
+
+.pagination .page-link {
+  border-radius: 10px;
+  margin: 0 5px;
+  color: #667eea;
+  border: 2px solid #667eea;
+  font-weight: 600;
+  padding: 10px 15px;
+  transition: all 0.3s ease;
+}
+
+.pagination .page-link:hover {
+  background: #667eea;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.pagination .page-item.active .page-link {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.pagination .page-item.disabled .page-link {
+  background: #e9ecef;
+  border-color: #dee2e6;
+  color: #6c757d;
+  cursor: not-allowed;
+}
+
+.pagination .page-item.disabled .page-link:hover {
+  transform: none;
+  box-shadow: none;
+}

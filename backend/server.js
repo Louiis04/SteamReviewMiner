@@ -108,19 +108,34 @@ app.get('/api/game/comments/:appId', async (req, res) => {
         num_per_page = 10, 
         cursor = '*',
         filter = 'recent',
-        page = 1
+        page = 1,
+        language = 'all'
     } = req.query;
 
+    const normalizedLanguage = (language || 'all').toLowerCase();
+
+    const parsePageCursor = (value) => {
+        if (!value || typeof value !== 'string') return null;
+        const match = value.match(/^page_(\d+)$/);
+        if (!match) return null;
+        const parsed = parseInt(match[1], 10);
+        return Number.isNaN(parsed) || parsed < 1 ? 1 : parsed;
+    };
+
+    const pageFromCursor = cursor === '*' ? null : parsePageCursor(cursor);
+    const resolvedPage = pageFromCursor ?? Math.max(parseInt(page, 10) || 1, 1);
+
     try {
-        if (cursor === '*') {
+        if (cursor === '*' || pageFromCursor) {
             const commentsExpired = await db.areCommentsExpired(appId);
             
             if (!commentsExpired) {
-                console.log(`📦 [CACHE] Buscando comentários do banco para AppID ${appId}`);
-                const limit = parseInt(num_per_page);
-                const offset = (parseInt(page) - 1) * limit;
-                const comments = await db.getComments(appId, limit, offset);
-                const total = await db.getCommentsCount(appId);
+                console.log(`📦 [CACHE] Buscando comentários do banco para AppID ${appId} (página ${resolvedPage})`);
+                const limit = parseInt(num_per_page, 10);
+                const offset = (resolvedPage - 1) * limit;
+                const comments = await db.getComments(appId, limit, offset, normalizedLanguage);
+                const total = await db.getCommentsCount(appId, normalizedLanguage);
+                const languageStats = await db.getCommentLanguageStats(appId);
 
                 if (comments.length > 0) {
                     const formattedComments = comments.map(c => ({
@@ -148,9 +163,11 @@ app.get('/api/game/comments/:appId', async (req, res) => {
                     return res.json({
                         success: true,
                         reviews: formattedComments,
-                        cursor: (offset + limit < total) ? `page_${parseInt(page) + 1}` : '',
+                        cursor: (offset + limit < total) ? `page_${resolvedPage + 1}` : '',
                         fromCache: true,
-                        total: total
+                        total: total,
+                        availableLanguages: languageStats,
+                        activeLanguage: normalizedLanguage
                     });
                 }
             }
@@ -186,7 +203,7 @@ app.get('/api/game/comments/:appId', async (req, res) => {
                     json: 1,
                     num_per_page: num_per_page,
                     cursor: cursor === '*' ? '*' : cursor,
-                    language: 'all',
+                    language: normalizedLanguage === 'all' ? 'all' : normalizedLanguage,
                     filter: filter,
                     purchase_type: 'all'
                 }
@@ -198,7 +215,14 @@ app.get('/api/game/comments/:appId', async (req, res) => {
             console.log(`💾 ${savedCount} novos comentários salvos no banco para AppID ${appId}`);
         }
 
-        res.json({ ...response.data, fromCache: false });
+        const languageStats = await db.getCommentLanguageStats(appId);
+
+        res.json({ 
+            ...response.data, 
+            fromCache: false,
+            availableLanguages: languageStats,
+            activeLanguage: normalizedLanguage
+        });
     } catch (error) {
         console.error('Erro ao buscar comentários:', error.message);
         res.status(500).json({ 

@@ -108,21 +108,58 @@ async function isReviewStatsExpired(appId) {
     return hoursAgo > cacheHours;
 }
 
-async function getComments(appId, limit = 10, offset = 0) {
+async function getComments(appId, limit = 10, offset = 0, language = 'all') {
+    const normalizedLanguage = (language || 'all').toLowerCase();
+    const params = [appId];
+    let whereClause = 'app_id = $1';
+
+    if (normalizedLanguage !== 'all') {
+        params.push(normalizedLanguage);
+        whereClause += ` AND LOWER(COALESCE(language, 'unknown')) = $${params.length}`;
+    }
+
+    params.push(limit);
+    params.push(offset);
+
     const query = `
         SELECT * FROM comments 
-        WHERE app_id = $1 
+        WHERE ${whereClause}
         ORDER BY timestamp_created DESC 
-        LIMIT $2 OFFSET $3
+        LIMIT $${params.length - 1} OFFSET $${params.length}
     `;
-    const result = await pool.query(query, [appId, limit, offset]);
+
+    const result = await pool.query(query, params);
     return result.rows;
 }
 
-async function getCommentsCount(appId) {
-    const query = 'SELECT COUNT(*) as total FROM comments WHERE app_id = $1';
-    const result = await pool.query(query, [appId]);
+async function getCommentsCount(appId, language = 'all') {
+    const normalizedLanguage = (language || 'all').toLowerCase();
+    let query = 'SELECT COUNT(*) as total FROM comments WHERE app_id = $1';
+    const params = [appId];
+
+    if (normalizedLanguage !== 'all') {
+        params.push(normalizedLanguage);
+        query += ` AND LOWER(COALESCE(language, 'unknown')) = $${params.length}`;
+    }
+
+    const result = await pool.query(query, params);
     return parseInt(result.rows[0].total);
+}
+
+async function getCommentLanguageStats(appId) {
+    const query = `
+        SELECT LOWER(COALESCE(language, 'unknown')) AS language, COUNT(*) AS total
+        FROM comments
+        WHERE app_id = $1
+        GROUP BY LOWER(COALESCE(language, 'unknown'))
+        ORDER BY COUNT(*) DESC
+    `;
+
+    const result = await pool.query(query, [appId]);
+    return result.rows.map((row) => ({
+        language: row.language || 'unknown',
+        total: parseInt(row.total, 10) || 0,
+    }));
 }
 
 async function saveComments(appId, comments) {
@@ -166,7 +203,9 @@ async function saveComments(appId, comments) {
                 comment.review || '',
                 comment.timestamp_created || 0,
                 comment.timestamp_updated || 0,
-                comment.language || 'unknown',
+                (typeof comment.language === 'string' && comment.language.trim().length > 0
+                    ? comment.language.toLowerCase()
+                    : 'unknown'),
             ];
 
             const result = await client.query(query, values);
@@ -688,6 +727,7 @@ module.exports = {
     isReviewStatsExpired,
     getComments,
     getCommentsCount,
+    getCommentLanguageStats,
     saveComments,
     areCommentsExpired,
     getCompleteGameData,

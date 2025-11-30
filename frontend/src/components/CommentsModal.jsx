@@ -2,6 +2,44 @@ import { createPortal } from 'react-dom';
 import { useEffect, useMemo } from 'react';
 import { escapeRegExp, formatNumber } from '../utils/formatters.js';
 
+const LANGUAGE_LABELS = {
+  all: 'Todos os idiomas',
+  english: 'Inglês',
+  brazilian: 'Português (Brasil)',
+  portuguese: 'Português',
+  spanish: 'Espanhol',
+  latam: 'Espanhol (LATAM)',
+  french: 'Francês',
+  german: 'Alemão',
+  italian: 'Italiano',
+  schinese: 'Chinês (Simplificado)',
+  tchinese: 'Chinês (Tradicional)',
+  japanese: 'Japonês',
+  korean: 'Coreano',
+  russian: 'Russo',
+  polish: 'Polonês',
+  turkish: 'Turco',
+  ukrainian: 'Ucraniano',
+  arabic: 'Árabe',
+  romanian: 'Romeno',
+  hungarian: 'Húngaro',
+  czech: 'Tcheco',
+  thai: 'Tailandês',
+  vietnamese: 'Vietnamita',
+  unknown: 'Idioma não informado',
+};
+
+const getLanguageLabel = (code) => {
+  if (!code) {
+    return LANGUAGE_LABELS.unknown;
+  }
+  const normalized = code.toLowerCase();
+  if (LANGUAGE_LABELS[normalized]) {
+    return LANGUAGE_LABELS[normalized];
+  }
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
 const renderHighlightedText = (text, keywords) => {
   if (!text) {
     return 'Sem texto de comentário.';
@@ -73,7 +111,44 @@ const CommentCard = ({ review, keywords }) => {
   );
 };
 
-const CommentsModal = ({ state, onClose, onLoadMore }) => {
+const CommentsModal = ({ state, onClose, onLoadMore, onChangeLanguage }) => {
+  const languageOptions = useMemo(() => {
+    if (state.keywordsMode) {
+      return [];
+    }
+
+    const counts = new Map();
+    const addCount = (language, totalValue = 0) => {
+      const normalized = (language || 'unknown').toLowerCase();
+      const totalAsNumber = Number.isFinite(totalValue) ? totalValue : parseInt(totalValue, 10) || 0;
+      counts.set(normalized, (counts.get(normalized) ?? 0) + totalAsNumber);
+    };
+
+    if (Array.isArray(state.availableLanguages) && state.availableLanguages.length > 0) {
+      state.availableLanguages.forEach(({ language, total }) => addCount(language, total));
+    } else if (Array.isArray(state.comments) && state.comments.length > 0) {
+      state.comments.forEach((comment) => addCount(comment.language, 1));
+    }
+
+    const options = Array.from(counts.entries())
+      .filter(([code]) => code && code !== 'all')
+      .map(([code, total]) => ({ code, total }))
+      .sort((a, b) => b.total - a.total);
+
+    const selected = (state.language || 'all').toLowerCase();
+    if (selected !== 'all' && !options.some((option) => option.code === selected)) {
+      options.push({ code: selected, total: 0 });
+    }
+
+    return options;
+  }, [state.availableLanguages, state.comments, state.keywordsMode, state.language]);
+
+  const showLanguageFilter = !state.keywordsMode && languageOptions.length > 0;
+  const totalLanguageCount = useMemo(
+    () => languageOptions.reduce((sum, option) => sum + (Number(option.total) || 0), 0),
+    [languageOptions],
+  );
+
   useEffect(() => {
     if (!state.open) return undefined;
     document.body.classList.add('modal-open');
@@ -96,6 +171,30 @@ const CommentsModal = ({ state, onClose, onLoadMore }) => {
               <button type="button" className="btn-close" onClick={onClose} aria-label="Fechar" />
             </div>
             <div className="modal-body">
+              {showLanguageFilter ? (
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
+                  <div className="text-muted small d-flex align-items-center gap-2">
+                    <i className="bi bi-translate" /> Filtrar idioma
+                  </div>
+                  <select
+                    className="form-select form-select-sm w-100 w-md-auto"
+                    value={state.language ?? 'all'}
+                    onChange={(event) => onChangeLanguage?.(event.target.value)}
+                    disabled={state.loading}
+                  >
+                    <option value="all">
+                      {LANGUAGE_LABELS.all}
+                      {totalLanguageCount ? ` (${formatNumber(totalLanguageCount)})` : ''}
+                    </option>
+                    {languageOptions.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {getLanguageLabel(option.code)}
+                        {option.total ? ` (${formatNumber(option.total)})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               {state.loading && state.comments.length === 0 ? (
                 <div className="loading-spinner">
                   <div className="spinner-border text-primary" role="status" />

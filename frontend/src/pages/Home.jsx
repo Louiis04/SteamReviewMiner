@@ -15,6 +15,9 @@ const initialModalState = {
   appId: null,
   keywordsMode: false,
   keywords: [],
+  language: 'all',
+  availableLanguages: [],
+  total: 0,
 };
 
 const GameCard = ({ game, onRemove, onShowComments, onToggleFavorite, isFavorite, favoriteDisabled }) => {
@@ -394,11 +397,23 @@ const Home = () => {
     setModalState({ ...initialModalState, ...config, open: true });
   }, []);
 
-  const fetchComments = useCallback(async (appId, cursor = '*', append = false) => {
+  const fetchComments = useCallback(async (appId, cursor = '*', append = false, language = 'all') => {
     try {
-      setModalState((prev) => ({ ...prev, loading: true }));
+      const normalizedLanguage = (language || 'all').toLowerCase();
+      setModalState((prev) => ({
+        ...prev,
+        loading: true,
+        language: normalizedLanguage,
+        comments: append ? prev.comments : [],
+        cursor: append ? prev.cursor : '',
+      }));
+      const params = new URLSearchParams({
+        num_per_page: '10',
+        cursor: cursor ?? '*',
+        language: normalizedLanguage,
+      });
       const response = await fetch(
-        `${API_BASE_URL}/game/comments/${appId}?num_per_page=10&cursor=${encodeURIComponent(cursor)}`,
+        `${API_BASE_URL}/game/comments/${appId}?${params.toString()}`,
       );
       const data = await response.json();
       if (!data.success) {
@@ -409,6 +424,9 @@ const Home = () => {
         loading: false,
         cursor: data.cursor ?? '',
         comments: append ? [...prev.comments, ...(data.reviews ?? [])] : data.reviews ?? [],
+        availableLanguages: data.availableLanguages ?? prev.availableLanguages ?? [],
+        language: data.activeLanguage ?? normalizedLanguage,
+        total: data.total ?? prev.total,
       }));
     } catch (error) {
       setModalState((prev) => ({ ...prev, loading: false }));
@@ -435,7 +453,7 @@ const Home = () => {
   const handleShowComments = useCallback((appId) => {
     const game = games.find((g) => g.appId === appId);
     openModal({ appId, title: `Comentários - ${game?.name ?? `Jogo ${appId}`}` });
-    fetchComments(appId);
+    fetchComments(appId, '*', false, 'all');
   }, [fetchComments, games, openModal]);
 
   const handleShowKeywordComments = useCallback((appId, gameName) => {
@@ -701,7 +719,12 @@ const Home = () => {
         onClose={() => setModalState(initialModalState)}
         onLoadMore={() => {
           if (modalState.appId && modalState.cursor) {
-            fetchComments(modalState.appId, modalState.cursor, true);
+            fetchComments(modalState.appId, modalState.cursor, true, modalState.language);
+          }
+        }}
+        onChangeLanguage={(nextLanguage) => {
+          if (modalState.appId) {
+            fetchComments(modalState.appId, '*', false, nextLanguage);
           }
         }}
       />

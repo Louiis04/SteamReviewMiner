@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const db = require('./db');
@@ -9,10 +10,15 @@ const popularGames = require('./popularGames');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
+const hasFrontendBuild = fs.existsSync(frontendDistPath);
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+
+if (hasFrontendBuild) {
+    app.use(express.static(frontendDistPath));
+}
 
 app.get('/api/game/reviews/:appId', async (req, res) => {
     const { appId } = req.params;
@@ -527,9 +533,12 @@ app.get('/api/game/comments/keywords/:appId', async (req, res) => {
     }
 });
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+if (hasFrontendBuild) {
+    app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api')) return next();
+        return res.sendFile(path.join(frontendDistPath, 'index.html'));
+    });
+}
 
 app.listen(PORT, async () => {
     console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);

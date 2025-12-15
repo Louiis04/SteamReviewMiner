@@ -314,6 +314,9 @@ async function showComments(appId) {
 
   const searchInput = document.getElementById("reviewSearchInput");
   if (searchInput) searchInput.value = "";
+  
+  resetFilters();
+
   const loadMoreBtn = document.getElementById("loadMoreBtn");
   if (loadMoreBtn) loadMoreBtn.style.display = "block";
 
@@ -323,11 +326,60 @@ async function showComments(appId) {
   await loadComments(appId);
 }
 
+function resetFilters() {
+    const sentiment = document.getElementById('filterSentiment');
+    const dateOrder = document.getElementById('filterDateOrder');
+    const minPlaytime = document.getElementById('filterMinPlaytime');
+    const minVotesUp = document.getElementById('filterMinVotesUp');
+    const minTextLength = document.getElementById('filterMinTextLength');
+    const minUtilityScore = document.getElementById('filterMinUtilityScore');
+    const minBM25 = document.getElementById('filterMinBM25');
+
+    if(sentiment) sentiment.value = '';
+    if(dateOrder) dateOrder.value = 'relevance';
+    if(minPlaytime) minPlaytime.value = '';
+    if(minVotesUp) minVotesUp.value = '';
+    if(minTextLength) minTextLength.value = '';
+    if(minUtilityScore) minUtilityScore.value = '';
+    if(minBM25) minBM25.value = '';
+    
+    const collapseElement = document.getElementById('filterCollapse');
+    if (collapseElement && collapseElement.classList.contains('show')) {
+        collapseElement.classList.remove('show');
+    }
+}
+
+function applyFilters() {
+    const searchInput = document.getElementById("reviewSearchInput");
+    if (searchInput && searchInput.value.trim()) {
+        searchReviewsBM25();
+    } else {
+        currentCursor = "*";
+        document.getElementById("modalCommentsBody").innerHTML =
+            '<div class="loading-spinner"><div class="spinner-border text-primary"></div></div>';
+        loadComments(currentModalAppId, "*");
+    }
+}
+
 async function loadComments(appId, cursor = "*") {
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/game/comments/${appId}?num_per_page=10&cursor=${cursor}`
-    );
+    const sentiment = document.getElementById('filterSentiment')?.value;
+    const dateOrder = document.getElementById('filterDateOrder')?.value;
+    const minPlaytime = document.getElementById('filterMinPlaytime')?.value;
+    const minVotesUp = document.getElementById('filterMinVotesUp')?.value;
+    const minTextLength = document.getElementById('filterMinTextLength')?.value;
+    const minUtilityScore = document.getElementById('filterMinUtilityScore')?.value;
+
+    let url = `${API_BASE_URL}/game/comments/${appId}?num_per_page=10&cursor=${cursor}`;
+    
+    if (sentiment) url += `&sentiment=${sentiment}`;
+    if (dateOrder) url += `&dateOrder=${dateOrder}`;
+    if (minPlaytime) url += `&minPlaytime=${minPlaytime}`;
+    if (minVotesUp) url += `&minVotesUp=${minVotesUp}`;
+    if (minTextLength) url += `&minTextLength=${minTextLength}`;
+    if (minUtilityScore) url += `&minUtilityScore=${minUtilityScore}`;
+
+    const response = await fetch(url);
     const data = await response.json();
 
     if (!data.success || !data.reviews || data.reviews.length === 0) {
@@ -335,7 +387,7 @@ async function loadComments(appId, cursor = "*") {
         document.getElementById("modalCommentsBody").innerHTML = `
                     <div class="text-center text-muted py-4">
                         <i class="bi bi-chat-left" style="font-size: 3rem;"></i>
-                        <p class="mt-2">Nenhum comentário encontrado.</p>
+                        <p class="mt-2">Nenhum comentário encontrado com esses filtros.</p>
                     </div>
                 `;
       }
@@ -879,13 +931,47 @@ async function searchReviewsBM25() {
       return;
     }
 
-    if (data.length === 0) {
+    let filteredData = data;
+    const sentiment = document.getElementById('filterSentiment')?.value;
+    const minPlaytime = parseFloat(document.getElementById('filterMinPlaytime')?.value) || 0;
+    const minVotesUp = parseInt(document.getElementById('filterMinVotesUp')?.value) || 0;
+    const minTextLength = parseInt(document.getElementById('filterMinTextLength')?.value) || 0;
+    const minUtilityScore = parseFloat(document.getElementById('filterMinUtilityScore')?.value) || 0;
+    const minBM25 = parseFloat(document.getElementById('filterMinBM25')?.value) || 0;
+
+    if (sentiment) {
+        filteredData = filteredData.filter(r => sentiment === 'positive' ? r.voted_up : !r.voted_up);
+    }
+    if (minPlaytime > 0) {
+        filteredData = filteredData.filter(r => (r.author?.playtime_forever || 0) / 60 >= minPlaytime);
+    }
+    if (minVotesUp > 0) {
+        filteredData = filteredData.filter(r => (r.votes_up || 0) >= minVotesUp);
+    }
+    if (minTextLength > 0) {
+        filteredData = filteredData.filter(r => (r.review || "").length >= minTextLength);
+    }
+    if (minUtilityScore > 0) {
+        filteredData = filteredData.filter(r => (r.utilityScore || 0) >= minUtilityScore);
+    }
+    if (minBM25 > 0) {
+        filteredData = filteredData.filter(r => (r.score || 0) >= minBM25);
+    }
+
+    const dateOrder = document.getElementById('filterDateOrder')?.value;
+    if (dateOrder === 'newest') {
+        filteredData.sort((a, b) => b.timestamp_created - a.timestamp_created);
+    } else if (dateOrder === 'oldest') {
+        filteredData.sort((a, b) => a.timestamp_created - b.timestamp_created);
+    }
+
+    if (filteredData.length === 0) {
       container.innerHTML =
-        '<div class="alert alert-info">Nenhuma review encontrada para este termo.</div>';
+        '<div class="alert alert-info">Nenhuma review encontrada para este termo com os filtros atuais.</div>';
       return;
     }
 
-    const html = data.map((item) => renderComment(item, true)).join("");
+    const html = filteredData.map((item) => renderComment(item, true)).join("");
 
     container.innerHTML = html;
   } catch (error) {
@@ -906,3 +992,16 @@ document.addEventListener("DOMContentLoaded", () => {
     return new bootstrap.Popover(popoverTriggerEl);
   });
 });
+
+function toggleBM25Filter() {
+    const searchInput = document.getElementById("reviewSearchInput");
+    const bm25Container = document.getElementById("filterBM25Container");
+    
+    if (searchInput && searchInput.value.trim().length > 0) {
+        bm25Container.classList.remove("d-none");
+    } else {
+        bm25Container.classList.add("d-none");
+        const bm25Input = document.getElementById("filterMinBM25");
+        if(bm25Input) bm25Input.value = "";
+    }
+}

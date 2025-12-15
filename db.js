@@ -107,20 +107,91 @@ async function isReviewStatsExpired(appId) {
   return hoursAgo > cacheHours;
 }
 
-async function getComments(appId, limit = 10, offset = 0) {
-  const query = `
-        SELECT * FROM comments 
-        WHERE app_id = $1 
-        ORDER BY timestamp_created DESC 
-        LIMIT $2 OFFSET $3
-    `;
-  const result = await pool.query(query, [appId, limit, offset]);
+async function getComments(appId, limit = 10, offset = 0, filters = {}) {
+  let query = `SELECT * FROM comments WHERE app_id = $1`;
+  const values = [appId];
+  let paramCount = 2;
+
+  if (filters.sentiment) {
+    if (filters.sentiment === "positive") {
+      query += ` AND voted_up = true`;
+    } else if (filters.sentiment === "negative") {
+      query += ` AND voted_up = false`;
+    }
+  }
+
+  if (filters.minPlaytime) {
+    query += ` AND (author_playtime_forever / 60) >= $${paramCount}`;
+    values.push(filters.minPlaytime);
+    paramCount++;
+  }
+
+  if (filters.minVotesUp) {
+    query += ` AND votes_up >= $${paramCount}`;
+    values.push(filters.minVotesUp);
+    paramCount++;
+  }
+
+  if (filters.minUtilityScore) {
+    query += ` AND weighted_vote_score >= $${paramCount}`;
+    values.push(filters.minUtilityScore / 10);
+  }
+
+  if (filters.minTextLength) {
+    query += ` AND LENGTH(review) >= $${paramCount}`;
+    values.push(filters.minTextLength);
+    paramCount++;
+  }
+
+  if (filters.dateOrder) {
+    if (filters.dateOrder === "oldest") {
+      query += ` ORDER BY timestamp_created ASC`;
+    } else {
+      query += ` ORDER BY timestamp_created DESC`;
+    }
+  } else {
+    query += ` ORDER BY timestamp_created DESC`;
+  }
+
+  query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+  values.push(limit, offset);
+
+  const result = await pool.query(query, values);
   return result.rows;
 }
 
-async function getCommentsCount(appId) {
-  const query = "SELECT COUNT(*) as total FROM comments WHERE app_id = $1";
-  const result = await pool.query(query, [appId]);
+async function getCommentsCount(appId, filters = {}) {
+  let query = "SELECT COUNT(*) as total FROM comments WHERE app_id = $1";
+  const values = [appId];
+  let paramCount = 2;
+
+  if (filters.sentiment) {
+    if (filters.sentiment === "positive") {
+      query += ` AND voted_up = true`;
+    } else if (filters.sentiment === "negative") {
+      query += ` AND voted_up = false`;
+    }
+  }
+
+  if (filters.minPlaytime) {
+    query += ` AND (author_playtime_forever / 60) >= $${paramCount}`;
+    values.push(filters.minPlaytime);
+    paramCount++;
+  }
+
+  if (filters.minVotesUp) {
+    query += ` AND votes_up >= $${paramCount}`;
+    values.push(filters.minVotesUp);
+    paramCount++;
+  }
+
+  if (filters.minTextLength) {
+    query += ` AND LENGTH(review) >= $${paramCount}`;
+    values.push(filters.minTextLength);
+    paramCount++;
+  }
+
+  const result = await pool.query(query, values);
   return parseInt(result.rows[0].total);
 }
 

@@ -162,6 +162,7 @@
                 class="form-control"
                 placeholder="Buscar palavra-chave nas reviews (score)..."
                 onkeypress="if(event.key === 'Enter') searchReviewsBM25()"
+                oninput="toggleBM25Filter()"
               />
               <button
                 class="btn btn-primary"
@@ -170,6 +171,59 @@
               >
                 <i class="bi bi-search"></i>
               </button>
+            </div>
+
+            <div class="mb-3">
+                <button class="btn btn-sm btn-outline-secondary w-100" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse">
+                    <i class="bi bi-funnel"></i> Filtros Avançados
+                </button>
+                <div class="collapse mt-2" id="filterCollapse">
+                    <div class="card card-body bg-light">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small">Sentimento</label>
+                                <select id="filterSentiment" class="form-select form-select-sm">
+                                    <option value="">Todos</option>
+                                    <option value="positive">Positivos 👍</option>
+                                    <option value="negative">Negativos 👎</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Ordenação</label>
+                                <select id="filterDateOrder" class="form-select form-select-sm">
+                                    <option value="relevance">Relevância / Padrão</option>
+                                    <option value="newest">Mais Recentes</option>
+                                    <option value="oldest">Mais Antigas</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Min. Horas Jogadas</label>
+                                <input type="number" id="filterMinPlaytime" class="form-control form-control-sm" placeholder="Ex: 10">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Min. Votos Úteis</label>
+                                <input type="number" id="filterMinVotesUp" class="form-control form-control-sm" placeholder="Ex: 5">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Min. Tamanho Texto</label>
+                                <input type="number" id="filterMinTextLength" class="form-control form-control-sm" placeholder="Ex: 100">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Min. Score Utilidade</label>
+                                <input type="number" id="filterMinUtilityScore" class="form-control form-control-sm" placeholder="0-10" step="0.1">
+                            </div>
+                            <div class="col-md-4 d-none" id="filterBM25Container">
+                                <label class="form-label small">Min. Relevância (Busca)</label>
+                                <input type="number" id="filterMinBM25" class="form-control form-control-sm" placeholder="Ex: 1.0" step="0.1">
+                            </div>
+                            <div class="col-md-12 d-flex align-items-end mt-2">
+                                <button class="btn btn-primary btn-sm w-100" onclick="applyFilters()">
+                                    Aplicar Filtros
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div id="modalCommentsBody"></div>
           </div>

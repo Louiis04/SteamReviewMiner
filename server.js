@@ -201,22 +201,44 @@ app.get("/api/game/comments/:appId", async (req, res) => {
     cursor = "*",
     filter = "recent",
     page = 1,
+    sentiment,
+    minPlaytime,
+    minVotesUp,
+    minTextLength,
+    dateOrder,
   } = req.query;
 
-  try {
-    if (cursor === "*") {
-      const commentsExpired = await db.areCommentsExpired(appId);
+  const filters = {
+    sentiment,
+    minPlaytime: minPlaytime ? parseInt(minPlaytime) : undefined,
+    minVotesUp: minVotesUp ? parseInt(minVotesUp) : undefined,
+    minTextLength: minTextLength ? parseInt(minTextLength) : undefined,
+    dateOrder,
+  };
 
-      if (!commentsExpired) {
+  try {
+    const hasCustomFilters =
+      sentiment || minPlaytime || minVotesUp || minTextLength || dateOrder;
+    const commentsExpired = await db.areCommentsExpired(appId);
+
+    if (commentsExpired && cursor === "*") {
+      console.log(
+        `🌐 [API] Cache expirado ou vazio. Buscando novos comentários da Steam API para AppID ${appId}`
+      );
+    }
+
+    if (cursor === "*" || hasCustomFilters) {
+      if (!commentsExpired || hasCustomFilters) {
         console.log(
-          `📦 [CACHE] Buscando comentários do banco para AppID ${appId}`
+          `📦 [CACHE] Buscando comentários do banco para AppID ${appId} com filtros:`,
+          filters
         );
         const limit = parseInt(num_per_page);
         const offset = (parseInt(page) - 1) * limit;
-        const comments = await db.getComments(appId, limit, offset);
-        const total = await db.getCommentsCount(appId);
+        const comments = await db.getComments(appId, limit, offset, filters);
+        const total = await db.getCommentsCount(appId, filters);
 
-        if (comments.length > 0) {
+        if (total > 0 || hasCustomFilters) {
           const formattedComments = comments.map((c) => ({
             recommendationid: c.recommendationid,
             author: {
@@ -237,7 +259,7 @@ app.get("/api/game/comments/:appId", async (req, res) => {
             timestamp_created: parseInt(c.timestamp_created),
             timestamp_updated: parseInt(c.timestamp_updated),
             language: c.language,
-            utilityScore: calculateUtilityScore(c), // Adiciona o score de utilidade
+            utilityScore: calculateUtilityScore(c),
           }));
 
           return res.json({

@@ -697,9 +697,9 @@ async function searchByKeywords() {
                                 }')">
                                     <i class="bi bi-plus-circle"></i> Adicionar à Lista
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="showComments('${
+                                <button class="btn btn-sm btn-outline-secondary" onclick="prepareAndShowComments('${
                                   game.app_id
-                                }')">
+                                }', '${escapeHtml(game.name)}')">
                                     <i class="bi bi-chat-left-text"></i> Ver Todos os Comentários
                                 </button>
                                 <button class="btn btn-sm btn-outline-info" onclick="showKeywordComments('${
@@ -776,6 +776,18 @@ async function addGameFromSearch(appId) {
   }
 }
 
+async function prepareAndShowComments(appId, gameName) {
+    if (!games[appId]) {
+        games[appId] = {
+            appId: appId,
+            name: gameName,
+            reviewsData: { total_reviews: 0, total_positive: 0, total_negative: 0 }
+        };
+    }
+    
+    await showComments(appId);
+}
+
 async function showKeywordComments(appId, gameName) {
   if (!currentSearchKeywords || currentSearchKeywords.length === 0) {
     showAlert(
@@ -795,6 +807,11 @@ async function showKeywordComments(appId, gameName) {
     `;
   document.getElementById("modalCommentsBody").innerHTML =
     '<div class="loading-spinner"><div class="spinner-border text-info"></div></div>';
+
+  const searchInput = document.getElementById("reviewSearchInput");
+  if (searchInput) searchInput.value = currentSearchKeywords.join(" ");
+  
+  toggleBM25Filter();
 
   const modal = new bootstrap.Modal(document.getElementById("commentsModal"));
   modal.show();

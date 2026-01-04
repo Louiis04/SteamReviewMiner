@@ -25,7 +25,9 @@ services:
 
   # Serviço 2: Aplicação Node.js (Servidor)
   app:
-    build: .
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile
     container_name: steam_review_app
     restart: unless-stopped
     ports:

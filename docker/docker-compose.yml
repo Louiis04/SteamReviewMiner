@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # Serviço 1: PostgreSQL (Banco de Dados)
+  postgres:
+    image: postgres:15-alpine
+    container_name: steam_review_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: steamuser
+      POSTGRES_PASSWORD: steampass123
+      POSTGRES_DB: steamreviews
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U steamuser -d steamreviews"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+
+  # Serviço 2: Aplicação Node.js (Servidor)
+  app:
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile
+    container_name: steam_review_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000" # Mapeia a porta 3000 do contêiner para o seu computador
+    environment:
+      # Credenciais para a aplicação se conectar ao BD (usando o nome do serviço 'postgres')
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: steamuser
+      DB_PASSWORD: steampass123
+      DB_NAME: steamreviews
+      PORT: 3000
+      CACHE_EXPIRATION_HOURS: 24
+    depends_on:
+      postgres:
+        condition: service_healthy # Espera o BD estar pronto antes de iniciar a aplicação
+    networks:
+      - default
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge

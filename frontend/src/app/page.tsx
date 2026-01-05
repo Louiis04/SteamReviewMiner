@@ -1,408 +1,144 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { CommentsDialog } from "@/components/comments-dialog";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { API_BASE_URL } from "@/lib/api";
-import { cn } from "@/lib/utils";
-
-type SearchResult = {
-  appid: string;
-  name: string;
-  header_image?: string;
-};
-
-type ReviewSummary = {
-  total_reviews: number;
-  total_positive: number;
-  total_negative: number;
-  review_score_desc?: string;
-};
-
-type GameSummary = {
-  appId: string;
-  name: string;
-  reviewsData: ReviewSummary;
-};
-
-type KeywordGame = {
-  app_id: string;
-  name: string;
-  header_image?: string;
-  positive_percentage?: number;
-  total_reviews?: number;
-  comment_matches?: number;
-  short_description?: string;
-  relevance_score?: number;
-};
-
-type Feedback = {
-  type: "success" | "warning" | "error" | "info";
-  text: string;
-} | null;
 
 export default function Home() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
-  const [games, setGames] = useState<GameSummary[]>([]);
-  const [keywordInput, setKeywordInput] = useState("");
-  const [keywordResults, setKeywordResults] = useState<KeywordGame[]>([]);
-  const [keywordLoading, setKeywordLoading] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogInfo, setDialogInfo] = useState<{ appId: string; name: string; keywords?: string[] } | null>(null);
-
-  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (searchTerm.trim().length < 2 || /^\d+$/.test(searchTerm.trim())) {
-      setSearchResults([]);
-      return;
-    }
-
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-
-    searchTimeout.current = setTimeout(() => {
-      void fetchSuggestions(searchTerm.trim());
-    }, 250);
-
-    return () => {
-      if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    };
-  }, [searchTerm]);
-
-  const gamesList = useMemo(() => games, [games]);
-
-  async function fetchSuggestions(term: string) {
-    setIsSearching(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/search?q=${encodeURIComponent(term)}`);
-      const data = await response.json();
-      if (data.success && data.games) {
-        setSearchResults(data.games);
-      } else {
-        setSearchResults([]);
-      }
-    } catch (error) {
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  }
-
-  async function addGame(appIdParam?: string) {
-    const appId = appIdParam || selectedAppId || searchTerm.trim();
-
-    if (!/^\d+$/.test(appId)) {
-      setFeedback({ type: "warning", text: "Selecione um jogo da lista ou digite um AppID válido." });
-      return;
-    }
-
-    if (games.find((g) => g.appId === appId)) {
-      setFeedback({ type: "info", text: "Este jogo já foi adicionado." });
-      setSearchTerm("");
-      setSelectedAppId(null);
-      return;
-    }
-
-    setIsAdding(true);
-    setFeedback(null);
-
-    try {
-      const reviewsResponse = await fetch(`${API_BASE_URL}/game/reviews/${appId}?num_per_page=0`);
-      const reviewsData = await reviewsResponse.json();
-      if (!reviewsData.success) throw new Error("Jogo não encontrado ou sem avaliações");
-
-      const detailsResponse = await fetch(`${API_BASE_URL}/game/details/${appId}`);
-      const detailsData = await detailsResponse.json();
-
-      const gameName = detailsData[appId]?.data?.name || `Jogo ${appId}`;
-
-      const summary: GameSummary = {
-        appId,
-        name: gameName,
-        reviewsData: {
-          total_reviews: reviewsData.query_summary?.total_reviews || 0,
-          total_positive: reviewsData.query_summary?.total_positive || 0,
-          total_negative: reviewsData.query_summary?.total_negative || 0,
-          review_score_desc: reviewsData.query_summary?.review_score_desc,
-        },
-      };
-
-      setGames((prev) => [...prev, summary]);
-      setSearchTerm("");
-      setSelectedAppId(null);
-      setSearchResults([]);
-      setFeedback({ type: "success", text: `Jogo "${gameName}" adicionado com sucesso!` });
-    } catch (error) {
-      setFeedback({ type: "error", text: "Erro ao buscar informações do jogo. Verifique o AppID." });
-    } finally {
-      setIsAdding(false);
-    }
-  }
-
-  function removeGame(appId: string) {
-    setGames((prev) => prev.filter((g) => g.appId !== appId));
-  }
-
-  function openComments(appId: string, name: string, keywords?: string[]) {
-    setDialogInfo({ appId, name, keywords });
-    setDialogOpen(true);
-  }
-
-  async function searchByKeywords() {
-    if (keywordInput.trim().length < 2) {
-      setFeedback({ type: "warning", text: "Digite ao menos uma palavra-chave." });
-      return;
-    }
-
-    setKeywordLoading(true);
-    setFeedback(null);
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/search/keywords?keywords=${encodeURIComponent(keywordInput.trim())}`
-      );
-      const data = await response.json();
-      if (data.success) {
-        setKeywordResults(data.games || []);
-      } else {
-        setKeywordResults([]);
-        setFeedback({ type: "error", text: data.message || "Erro ao buscar por palavras-chave." });
-      }
-    } catch (error) {
-      setFeedback({ type: "error", text: "Erro ao buscar por palavras-chave." });
-    } finally {
-      setKeywordLoading(false);
-    }
-  }
-
-  const feedbackClass = useMemo(() => {
-    if (!feedback) return "";
-    if (feedback.type === "success") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-    if (feedback.type === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
-    if (feedback.type === "info") return "border-blue-200 bg-blue-50 text-blue-800";
-    return "border-red-200 bg-red-50 text-red-700";
-  }, [feedback]);
-
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">Steam Game Reviews</h1>
-        <p className="text-muted-foreground">Busque jogos, analise comentários e encontre títulos populares.</p>
-      </div>
-
-      {feedback ? (
-        <div className={cn("rounded-md border px-4 py-3 text-sm", feedbackClass)}>{feedback.text}</div>
-      ) : null}
-
-      <Card className="shadow-sm">
-        <CardHeader className="gap-2">
-          <CardTitle>Buscar jogo da Steam</CardTitle>
-          <CardDescription>Digite o nome ou AppID do jogo para adicionar à lista.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-col gap-3 md:flex-row">
-            <div className="relative w-full">
-              <Input
-                placeholder="Ex: Counter-Strike, 730"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setSelectedAppId(null);
-                }}
-              />
-              {searchTerm.length >= 2 && searchResults.length > 0 ? (
-                <div className="absolute left-0 right-0 z-10 mt-1 max-h-72 overflow-y-auto rounded-lg border bg-background shadow">
-                  {isSearching ? (
-                    <div className="p-3 text-sm text-muted-foreground">Buscando...</div>
-                  ) : null}
-                  {searchResults.map((result) => (
-                    <button
-                      key={result.appid}
-                      className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted"
-                      onClick={() => {
-                        setSearchTerm(result.name);
-                        setSelectedAppId(result.appid);
-                      }}
-                    >
-                      <img
-                        src={result.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${result.appid}/capsule_184x69.jpg`}
-                        alt={result.name}
-                        className="h-12 w-24 rounded-md object-cover"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium leading-tight">{result.name}</div>
-                        <div className="text-xs text-muted-foreground">AppID: {result.appid}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <Button className="md:w-40" onClick={() => addGame()} disabled={isAdding}>
-              {isAdding ? "Adicionando..." : "Buscar jogo"}
+    <div className="space-y-10">
+      <section className="grid gap-8 rounded-2xl border bg-gradient-to-br from-background to-muted/60 p-8 md:grid-cols-2">
+        <div className="space-y-4">
+          <Badge variant="secondary" className="text-xs">Novo</Badge>
+          <div className="space-y-3">
+            <h1 className="text-3xl font-semibold leading-tight md:text-4xl">Steam Review Miner: entenda jogos pelo que os jogadores dizem</h1>
+            <p className="text-lg text-muted-foreground">Busque jogos, veja as melhores avaliações e filtre comentários relevantes com BM25 e palavras-chave.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button asChild size="lg">
+              <Link href="/explore">Começar agora</Link>
+            </Button>
+            <Button asChild variant="secondary" size="lg">
+              <Link href="/top">Ver top jogos</Link>
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Dica: digite o nome do jogo ou o AppID numérico.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card className="shadow-sm">
-        <CardHeader className="gap-2">
-          <CardTitle>Buscar por palavras-chave nos comentários</CardTitle>
-          <CardDescription>Encontre jogos cujos comentários contêm os termos informados.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row">
-            <Input
-              placeholder="Ex: terror, cooperativo, engraçado"
-              value={keywordInput}
-              onChange={(e) => setKeywordInput(e.target.value)}
+          <div className="grid gap-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">• Adicione jogos pelo nome ou AppID</div>
+            <div className="flex items-center gap-2">• Filtre comentários úteis primeiro</div>
+            <div className="flex items-center gap-2">• Compare jogos pelo sentimento dos reviews</div>
+          </div>
+        </div>
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle>Exemplo rápido</CardTitle>
+            <CardDescription>Como ficaria uma busca por “Stardew Valley”.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <img
+              src="https://cdn.akamai.steamstatic.com/steam/apps/413150/header.jpg"
+              alt="Stardew Valley"
+              className="h-40 w-full rounded-md object-cover"
             />
-            <Button className="md:w-48" variant="secondary" onClick={searchByKeywords} disabled={keywordLoading}>
-              {keywordLoading ? "Buscando..." : "Buscar comentários"}
-            </Button>
-          </div>
-
-          {keywordResults.length > 0 ? (
-            <div className="space-y-3">
-              <div className="text-sm text-muted-foreground">{keywordResults.length} jogo(s) encontrado(s)</div>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {keywordResults.map((game, idx) => (
-                  <Card key={game.app_id} className="h-full">
-                    <CardHeader className="space-y-1">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>#{idx + 1}</span>
-                        <span>AppID: {game.app_id}</span>
-                      </div>
-                      <CardTitle className="text-base leading-tight">{game.name}</CardTitle>
-                      {game.short_description ? (
-                        <CardDescription className="line-clamp-2">{game.short_description}</CardDescription>
-                      ) : null}
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <img
-                        src={
-                          game.header_image ||
-                          `https://cdn.akamai.steamstatic.com/steam/apps/${game.app_id}/header.jpg`
-                        }
-                        alt={game.name}
-                        className="h-32 w-full rounded-md object-cover"
-                      />
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <Badge variant="outline">{game.positive_percentage || 0}% positivas</Badge>
-                        <Badge variant="secondary">{new Intl.NumberFormat("pt-BR").format(game.total_reviews || 0)} reviews</Badge>
-                        <Badge>{game.comment_matches || 0} comentários</Badge>
-                      </div>
-                      <div className="grid gap-2 text-sm">
-                        <Button size="sm" onClick={() => addGame(game.app_id)}>Adicionar à lista</Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openComments(game.app_id, game.name)}
-                        >
-                          Ver todos os comentários
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => openComments(game.app_id, game.name, keywordInput.split(/[,;\s]+/).filter(Boolean))}
-                        >
-                          Ver relevantes
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Badge variant="secondary" className="text-base font-semibold">97% positivas</Badge>
+              <Badge variant="outline">500k+ reviews</Badge>
+              <Badge variant="outline">Sentimento: Overwhelmingly Positive</Badge>
             </div>
-          ) : null}
-        </CardContent>
-      </Card>
+            <div className="flex gap-2">
+              <Button asChild className="flex-1">
+                <Link href="/explore">Ver comentários</Link>
+              </Button>
+              <Button asChild variant="ghost" className="gap-2">
+                <a href="https://store.steampowered.com/app/413150" target="_blank" rel="noreferrer">
+                  <span className="inline-flex items-center gap-2">
+                    <img src="/steam-logo.svg" alt="Steam" className="h-4 w-4" />
+                    Abrir na Steam
+                  </span>
+                </a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-6 md:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>1) Buscar e adicionar</CardTitle>
+            <CardDescription>Use nome ou AppID, veja sugestões e construa sua lista.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">Selecione um jogo sugerido para evitar erros de AppID e siga para os comentários.</CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>2) Filtrar comentários</CardTitle>
+            <CardDescription>Tabs: Todos, Relevantes (BM25) e Palavras-chave.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">Priorize os mais úteis, aplique BM25 e revele os pontos que mais importam.</CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>3) Descobrir tops</CardTitle>
+            <CardDescription>Abra a página de Top Jogos já pronta para exploração.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">Veja notas agregadas, sentimento e vá direto para os comentários do ranking.</CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-6 md:grid-cols-2">
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Exploração guiada</CardTitle>
+            <CardDescription>Comece na página de exploração para adicionar e comparar jogos.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">Fluxo completo: busca, filtros, BM25, palavras-chave e comentários úteis.</div>
+            <Button asChild>
+              <Link href="/explore">Ir para explorar</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Top jogos</CardTitle>
+            <CardDescription>Ranking já pronto com filtros de avaliações.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">Ordene por melhor avaliação, mais reviews ou mais recentes e abra os comentários.</div>
+            <Button asChild variant="secondary">
+              <Link href="/top">Ver ranking</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
 
       <Separator />
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Jogos adicionados</h2>
-          <span className="text-sm text-muted-foreground">{gamesList.length} jogo(s)</span>
-        </div>
-
-        {gamesList.length === 0 ? (
-          <div className="rounded-md border border-dashed p-6 text-center text-muted-foreground">
-            Nenhum jogo adicionado ainda. Use a busca acima para começar.
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {gamesList.map((game) => {
-              const total = game.reviewsData.total_reviews || 0;
-              const positive = game.reviewsData.total_positive || 0;
-              const percentage = total > 0 ? ((positive / total) * 100).toFixed(1) : "0";
-              return (
-                <Card key={game.appId} className="relative overflow-hidden">
-                  <CardHeader className="space-y-1">
-                    <CardTitle className="text-lg">{game.name}</CardTitle>
-                    <CardDescription>AppID: {game.appId}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center gap-3 text-sm">
-                      <Badge variant="secondary" className="text-base font-semibold">
-                        {percentage}%
-                      </Badge>
-                      <span className="text-muted-foreground">{game.reviewsData.review_score_desc || "N/A"}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="rounded-md bg-muted/60 px-3 py-2">
-                        <div className="text-xs text-muted-foreground">Total</div>
-                        <div className="font-semibold">
-                          {new Intl.NumberFormat("pt-BR").format(total)}
-                        </div>
-                      </div>
-                      <div className="rounded-md bg-muted/60 px-3 py-2">
-                        <div className="text-xs text-muted-foreground">Positivas</div>
-                        <div className="font-semibold text-emerald-600">
-                          {new Intl.NumberFormat("pt-BR").format(game.reviewsData.total_positive)}
-                        </div>
-                      </div>
-                      <div className="rounded-md bg-muted/60 px-3 py-2">
-                        <div className="text-xs text-muted-foreground">Negativas</div>
-                        <div className="font-semibold text-red-500">
-                          {new Intl.NumberFormat("pt-BR").format(game.reviewsData.total_negative)}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button className="flex-1" onClick={() => openComments(game.appId, game.name)}>
-                        Ver comentários
-                      </Button>
-                      <Button variant="outline" onClick={() => removeGame(game.appId)}>
-                        Remover
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <CommentsDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        appId={dialogInfo?.appId || null}
-        gameName={dialogInfo?.name || ""}
-        presetKeywords={dialogInfo?.keywords}
-      />
+      <section className="grid gap-6 md:grid-cols-3">
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Benefício imediato</CardTitle>
+            <CardDescription>Economize tempo lendo só o que importa.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">BM25 + filtro de utilidade destacam comentários com mais sinal, não apenas volume.</CardContent>
+        </Card>
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Para quem é</CardTitle>
+            <CardDescription>Curadores, devs, jogadores indecisos.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">Ajuda a validar percepção do público, priorizar backlog ou decidir compra.</CardContent>
+        </Card>
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Tema e acessibilidade</CardTitle>
+            <CardDescription>Light/Dark com foco visível e badges legíveis.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">Use o toggle no topo; contrastes e foco seguem padrões do shadcn UI.</CardContent>
+        </Card>
+      </section>
     </div>
   );
 }

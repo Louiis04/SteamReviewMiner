@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body {
+  min-height: 100%;
+  height: auto;
+  overflow-y: auto;
+}
+
 body {
   font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
 }

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export type ReviewComment = {
   recommendationid?: string;
@@ -61,6 +62,11 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   appId: string | null;
   gameName: string;
+  summary?: {
+    totalReviews?: number;
+    positive?: number;
+    scoreDesc?: string;
+  };
   presetKeywords?: string[];
 };
 
@@ -87,16 +93,22 @@ export function CommentsDialog({
   onOpenChange,
   appId,
   gameName,
+  summary,
   presetKeywords,
 }: Props) {
   const [comments, setComments] = useState<ReviewComment[]>([]);
   const [cursor, setCursor] = useState<string>("*");
   const [isLoading, setIsLoading] = useState(false);
   const [bm25Query, setBm25Query] = useState("");
+  const [keywordQuery, setKeywordQuery] = useState("");
   const [filters, setFilters] = useState<CommentFilters>(defaultFilters);
   const [mode, setMode] = useState<"default" | "keywords" | "bm25">(
     presetKeywords && presetKeywords.length > 0 ? "keywords" : "default"
   );
+  const [activeTab, setActiveTab] = useState<"default" | "bm25" | "keywords">(
+    presetKeywords && presetKeywords.length > 0 ? "keywords" : "default"
+  );
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -104,8 +116,13 @@ export function CommentsDialog({
       setComments([]);
       setCursor("*");
       setFilters(defaultFilters);
+      const preset = presetKeywords?.join(", ") || "";
+      setKeywordQuery(preset);
       setBm25Query(presetKeywords?.join(" ") || "");
-      setMode(presetKeywords && presetKeywords.length > 0 ? "keywords" : "default");
+      const nextMode = presetKeywords && presetKeywords.length > 0 ? "keywords" : "default";
+      setMode(nextMode);
+      setActiveTab(nextMode);
+      setShowAdvanced(false);
       if (presetKeywords && presetKeywords.length > 0) {
         fetchKeywordComments(presetKeywords);
       } else {
@@ -150,6 +167,7 @@ export function CommentsDialog({
       setComments((prev) => (nextCursor === "*" ? filtered : [...prev, ...filtered]));
       setCursor(data.cursor || "");
       setMode("default");
+      setActiveTab("default");
     } catch (err) {
       setError("Erro ao carregar comentários.");
     } finally {
@@ -171,6 +189,7 @@ export function CommentsDialog({
       setComments(applyLocalFilters(received));
       setCursor("");
       setMode("keywords");
+      setActiveTab("keywords");
     } catch (err) {
       setError("Erro ao buscar comentários relevantes.");
     } finally {
@@ -205,10 +224,39 @@ export function CommentsDialog({
       setComments(filtered);
       setCursor("");
       setMode("bm25");
+      setActiveTab("bm25");
     } catch (err) {
       setError("Erro ao buscar por BM25.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleKeywordSearch() {
+    const keywords = keywordQuery.split(/[,;]+|\s+/).map((k) => k.trim()).filter(Boolean);
+    if (!keywords.length) return;
+    await fetchKeywordComments(keywords);
+  }
+
+  function handleTabChange(value: string) {
+    const tab = value as "default" | "bm25" | "keywords";
+    setActiveTab(tab);
+    setMode(tab);
+    setError(null);
+    setComments([]);
+    if (tab === "default") {
+      setCursor("*");
+      void fetchComments("*");
+    }
+    if (tab === "keywords") {
+      setCursor("");
+      const keywords = keywordQuery.split(/[,;]+|\s+/).map((k) => k.trim()).filter(Boolean);
+      if (keywords.length > 0) {
+        void fetchKeywordComments(keywords);
+      }
+    }
+    if (tab === "bm25") {
+      setCursor("");
     }
   }
 
@@ -272,6 +320,17 @@ export function CommentsDialog({
               <DialogDescription>
                 Filtre, pesquise por BM25 ou veja comentários relevantes.
               </DialogDescription>
+              {summary ? (
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="text-xs font-semibold">
+                    {summary.totalReviews ? `${Math.round(((summary.positive || 0) / (summary.totalReviews || 1)) * 100)}% positivas` : "Sem dados"}
+                  </Badge>
+                  {summary.totalReviews ? (
+                    <span>{new Intl.NumberFormat("pt-BR").format(summary.totalReviews)} reviews</span>
+                  ) : null}
+                  {summary.scoreDesc ? <span>• {summary.scoreDesc}</span> : null}
+                </div>
+              ) : null}
             </div>
             <Popover>
               <PopoverTrigger asChild>
@@ -301,122 +360,191 @@ export function CommentsDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Buscar por palavra-chave (BM25)</label>
-              <div className="flex gap-2">
-                <Input
-                  value={bm25Query}
-                  onChange={(e) => setBm25Query(e.target.value)}
-                  placeholder="Ex: terror, ação, ótimo"
-                />
-                <Button variant="secondary" onClick={handleBm25Search} disabled={!bm25Query.trim()}>
-                  Buscar
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Sentimento</label>
-              <Select
-                value={filters.sentiment}
-                onValueChange={(value) => setFilters((prev) => ({ ...prev, sentiment: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="positive">Positivos</SelectItem>
-                  <SelectItem value="negative">Negativos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Ordenação</label>
-              <Select
-                value={filters.dateOrder}
-                onValueChange={(value) => setFilters((prev) => ({ ...prev, dateOrder: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Relevância" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="relevance">Relevância</SelectItem>
-                  <SelectItem value="newest">Mais recentes</SelectItem>
-                  <SelectItem value="oldest">Mais antigas</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Min. horas jogadas</label>
-                <Input
-                  type="number"
-                  value={filters.minPlaytime}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, minPlaytime: e.target.value }))}
-                  placeholder="10"
-                  min={0}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Min. votos úteis</label>
-                <Input
-                  type="number"
-                  value={filters.minVotesUp}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, minVotesUp: e.target.value }))}
-                  placeholder="5"
-                  min={0}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Min. tamanho texto</label>
-                <Input
-                  type="number"
-                  value={filters.minTextLength}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, minTextLength: e.target.value }))}
-                  placeholder="100"
-                  min={0}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Min. score utilidade</label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={filters.minUtilityScore}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, minUtilityScore: e.target.value }))}
-                  placeholder="0-10"
-                  min={0}
-                  max={10}
-                />
-              </div>
-              {mode === "bm25" ? (
-                <div className="space-y-2 col-span-2">
-                  <label className="text-sm font-medium">Min. relevância BM25</label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    value={filters.minBM25}
-                    onChange={(e) => setFilters((prev) => ({ ...prev, minBM25: e.target.value }))}
-                    placeholder="1.0"
-                    min={0}
-                  />
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+            <TabsList className="w-full justify-start">
+              <TabsTrigger value="default">Todos</TabsTrigger>
+              <TabsTrigger value="bm25">Relevantes (BM25)</TabsTrigger>
+              <TabsTrigger value="keywords">Palavras-chave</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="default">
+              <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Sentimento</label>
+                  <Select
+                    value={filters.sentiment}
+                    onValueChange={(value) => setFilters((prev) => ({ ...prev, sentiment: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="positive">Positivos</SelectItem>
+                      <SelectItem value="negative">Negativos</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              ) : null}
-            </div>
-            <div className="flex items-end gap-2 sm:col-span-2">
-              <Button variant="secondary" onClick={() => fetchComments("*")}>Recarregar</Button>
-              {mode === "keywords" && presetKeywords ? (
-                <Badge variant="outline" className="ml-auto text-xs">
-                  Palavras-chave: {presetKeywords.join(", ")}
-                </Badge>
-              ) : null}
-            </div>
-          </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Ordenação</label>
+                  <Select
+                    value={filters.dateOrder}
+                    onValueChange={(value) => setFilters((prev) => ({ ...prev, dateOrder: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Relevância" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="relevance">Relevância</SelectItem>
+                      <SelectItem value="newest">Mais recentes</SelectItem>
+                      <SelectItem value="oldest">Mais antigas</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                  <Button variant="secondary" onClick={() => fetchComments("*")}>Atualizar comentários</Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setFilters(defaultFilters);
+                      setShowAdvanced(false);
+                    }}
+                  >
+                    Resetar filtros
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAdvanced((prev) => !prev)}
+                  >
+                    {showAdvanced ? "Ocultar filtros avançados" : "Filtros avançados"}
+                  </Button>
+                </div>
+                {showAdvanced ? (
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2 md:col-span-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Min. horas jogadas</label>
+                      <Input
+                        type="number"
+                        value={filters.minPlaytime}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, minPlaytime: e.target.value }))}
+                        placeholder="0"
+                        min={0}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Min. votos úteis</label>
+                      <Input
+                        type="number"
+                        value={filters.minVotesUp}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, minVotesUp: e.target.value }))}
+                        placeholder="0"
+                        min={0}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Min. tamanho texto</label>
+                      <Input
+                        type="number"
+                        value={filters.minTextLength}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, minTextLength: e.target.value }))}
+                        placeholder="0"
+                        min={0}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Min. score utilidade</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={filters.minUtilityScore}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, minUtilityScore: e.target.value }))}
+                        placeholder="0"
+                        min={0}
+                        max={10}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="bm25">
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Buscar comentários que contenham…</label>
+                  <Input
+                    value={bm25Query}
+                    onChange={(e) => setBm25Query(e.target.value)}
+                    placeholder="Ex: terror, ação, ótimo"
+                  />
+                  <p className="text-xs text-muted-foreground">Usa BM25 para ordenar por relevância ao termo buscado.</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Min. relevância BM25</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={filters.minBM25}
+                      onChange={(e) => setFilters((prev) => ({ ...prev, minBM25: e.target.value }))}
+                      placeholder="1.0"
+                      min={0}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Min. score utilidade</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={filters.minUtilityScore}
+                      onChange={(e) => setFilters((prev) => ({ ...prev, minUtilityScore: e.target.value }))}
+                      placeholder="0-10"
+                      min={0}
+                      max={10}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" onClick={handleBm25Search} disabled={!bm25Query.trim()}>
+                    Buscar por BM25
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setFilters(defaultFilters)}>
+                    Limpar filtros
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="keywords">
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Palavras-chave (separe por vírgula)</label>
+                  <Input
+                    value={keywordQuery}
+                    onChange={(e) => setKeywordQuery(e.target.value)}
+                    placeholder="terror, cooperativo, história"
+                  />
+                  <p className="text-xs text-muted-foreground">Usa busca direta por palavras-chave armazenadas nos comentários.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="secondary" onClick={handleKeywordSearch} disabled={!keywordQuery.trim()}>
+                    Buscar relevantes
+                  </Button>
+                  {presetKeywords ? (
+                    <Badge variant="outline" className="text-xs">
+                      Sugestão inicial: {presetKeywords.join(", ")}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
 
           <Separator />
 
-          <ScrollArea className="max-h-[50vh] space-y-3 pr-4">
+          <div className="h-[60vh] space-y-3 overflow-y-auto pr-4">
             {isLoading && comments.length === 0 ? (
               <div className="flex justify-center py-6 text-sm text-muted-foreground">Carregando comentários...</div>
             ) : null}
@@ -436,7 +564,7 @@ export function CommentsDialog({
             <div className="space-y-3">
               {orderedComments.map((comment) => renderComment(comment))}
             </div>
-          </ScrollArea>
+          </div>
         </div>
 
         <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">

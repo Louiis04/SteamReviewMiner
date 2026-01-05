@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "next-themes";
 import { CommentsDialog } from "@/components/comments-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ type TopGame = {
 type Feedback = { type: "success" | "warning" | "error" | "info"; text: string } | null;
 
 export default function TopPage() {
+  const { resolvedTheme } = useTheme();
   const [sort, setSort] = useState("rating");
   const [minReviews, setMinReviews] = useState("100");
   const [limit, setLimit] = useState("50");
@@ -45,6 +47,8 @@ export default function TopPage() {
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogInfo, setDialogInfo] = useState<{ appId: string; name: string } | null>(null);
+
+  const steamIcon = resolvedTheme === "dark" ? "/steam-3.svg" : "/steam-4.svg";
 
   const paginatedGames = useMemo(() => {
     if (limit !== "all") return games;
@@ -57,20 +61,30 @@ export default function TopPage() {
     return Math.max(1, Math.ceil(allGames.length / GAMES_PER_PAGE));
   }, [limit, allGames]);
 
-  async function loadTopGames() {
+  useEffect(() => {
+    void loadTopGames();
+  }, []);
+
+  async function loadTopGames(options?: { limit?: string; sort?: string; minReviews?: string }) {
     setIsLoading(true);
     setFeedback(null);
     try {
-      const fetchLimit = limit === "all" ? "10000" : limit;
-      const url = `${API_BASE_URL}/top-games?sort=${sort}&min_reviews=${minReviews}&limit=${fetchLimit}`;
+      const nextLimit = options?.limit ?? limit;
+      const nextSort = options?.sort ?? sort;
+      const nextMinReviews = options?.minReviews ?? minReviews;
+      const fetchLimit = nextLimit === "all" ? "10000" : nextLimit;
+      const url = `${API_BASE_URL}/top-games?sort=${nextSort}&min_reviews=${nextMinReviews}&limit=${fetchLimit}`;
       const response = await fetch(url);
       const data = await response.json();
       if (data.success && data.games) {
-        if (limit === "all") {
+        if (nextLimit === "all") {
           setAllGames(data.games);
           setPage(1);
         }
         setGames(data.games);
+        if (options?.limit) setLimit(options.limit);
+        if (options?.sort) setSort(options.sort);
+        if (options?.minReviews) setMinReviews(options.minReviews);
       } else {
         setGames([]);
         setAllGames([]);
@@ -112,6 +126,32 @@ export default function TopPage() {
         <h1 className="text-2xl font-semibold">Jogos melhores avaliados</h1>
         <p className="text-muted-foreground">Filtre e visualize os jogos com mais avaliações positivas.</p>
       </div>
+
+      <Card className="border-dashed bg-muted/40 shadow-none">
+        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <CardTitle>Como usar esta página</CardTitle>
+            <CardDescription>
+              1) Ajuste filtros • 2) Clique em Atualizar • 3) Abra comentários para detalhes.
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setLimit("20");
+                void loadTopGames({ limit: "20" });
+              }}
+            >
+              Ver Top 20 agora
+            </Button>
+            <Button size="sm" variant="ghost" asChild>
+              <a href="/">Voltar para busca</a>
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -163,7 +203,13 @@ export default function TopPage() {
             </Select>
           </div>
           <div className="flex items-end gap-2">
-            <Button className="flex-1" onClick={loadTopGames} disabled={isLoading}>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                void loadTopGames();
+              }}
+              disabled={isLoading}
+            >
               {isLoading ? "Carregando..." : "Atualizar"}
             </Button>
             <Button variant="outline" onClick={triggerPreload}>
@@ -188,6 +234,17 @@ export default function TopPage() {
       ) : null}
 
       <Separator />
+
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>
+          Exibindo {limit === "all" ? allGames.length : games.length} jogo(s){" "}
+          {limit === "all" ? "paginação local em 10 por página" : ""}
+        </span>
+        <span>
+          Filtro: {sort === "rating" ? "Melhor avaliação" : sort === "reviews" ? "Mais avaliações" : "Mais recentes"}
+          {" • "}Mínimo: {minReviews}+ avaliações
+        </span>
+      </div>
 
       {paginatedGames.length === 0 && !isLoading ? (
         <Card className="border-dashed">
@@ -255,8 +312,14 @@ export default function TopPage() {
                       Ver comentários
                     </Button>
                     <Button variant="outline" size="sm" asChild>
-                      <a href={`https://store.steampowered.com/app/${game.app_id}`} target="_blank" rel="noreferrer">
-                        Steam
+                      <a
+                        href={`https://store.steampowered.com/app/${game.app_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center"
+                        aria-label="Abrir na Steam"
+                      >
+                        <img src={steamIcon} alt="Steam" className="h-12 w-12" />
                       </a>
                     </Button>
                   </div>

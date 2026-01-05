@@ -209,6 +209,11 @@ app.get("/api/game/comments/:appId", async (req, res) => {
     dateOrder,
   } = req.query;
 
+  const isPageCursor = typeof cursor === "string" && cursor.startsWith("page_");
+  const pageFromCursor = isPageCursor
+    ? parseInt(cursor.split("_")[1]) || 1
+    : parseInt(page) || 1;
+
   const filters = {
     sentiment,
     minPlaytime: minPlaytime ? parseInt(minPlaytime) : undefined,
@@ -228,18 +233,23 @@ app.get("/api/game/comments/:appId", async (req, res) => {
       );
     }
 
-    if (cursor === "*" || hasCustomFilters) {
+    if (cursor === "*" || hasCustomFilters || isPageCursor) {
       if (!commentsExpired || hasCustomFilters) {
         console.log(
           `📦 [CACHE] Buscando comentários do banco para AppID ${appId} com filtros:`,
           filters
         );
         const limit = parseInt(num_per_page);
-        const offset = (parseInt(page) - 1) * limit;
+        const offset = (pageFromCursor - 1) * limit;
         const comments = await db.getComments(appId, limit, offset, filters);
         const total = await db.getCommentsCount(appId, filters);
 
-        if (total > 0 || hasCustomFilters) {
+        // Se temos poucos comentários em cache (ex.: só a primeira página), deixamos seguir
+        // para a Steam API para habilitar cursor/paginação e tentar trazer mais páginas.
+        const cacheTooSmall =
+          cursor === "*" && !hasCustomFilters && total <= limit;
+
+        if (!cacheTooSmall && (total > 0 || hasCustomFilters)) {
           const formattedComments = comments.map((c) => ({
             recommendationid: c.recommendationid,
             author: {
@@ -266,7 +276,7 @@ app.get("/api/game/comments/:appId", async (req, res) => {
           return res.json({
             success: true,
             reviews: formattedComments,
-            cursor: offset + limit < total ? `page_${parseInt(page) + 1}` : "",
+            cursor: offset + limit < total ? `page_${pageFromCursor + 1}` : "",
             fromCache: true,
             total: total,
           });
@@ -306,13 +316,15 @@ app.get("/api/game/comments/:appId", async (req, res) => {
       }
     }
 
+    const effectiveCursor = cursor === "*" || isPageCursor ? "*" : cursor;
+
     const response = await axios.get(
       `https://store.steampowered.com/appreviews/${appId}`,
       {
         params: {
           json: 1,
           num_per_page: num_per_page,
-          cursor: cursor === "*" ? "*" : cursor,
+          cursor: effectiveCursor,
           language: "all",
           filter: filter,
           purchase_type: "all",

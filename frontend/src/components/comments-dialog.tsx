@@ -133,13 +133,25 @@ export function CommentsDialog({
 
   const orderedComments = useMemo(() => {
     let data = [...comments];
-    if (filters.dateOrder === "newest") {
+    
+    // Se o modo NÃO for "default", ignoramos a ordenação de data selecionada na aba principal
+    // e forçamos a ordenação por relevância (score específico do modo)
+    const effectiveDateOrder = mode === "default" ? filters.dateOrder : "relevance";
+
+    if (effectiveDateOrder === "newest") {
       data.sort((a, b) => (b.timestamp_created || 0) - (a.timestamp_created || 0));
-    } else if (filters.dateOrder === "oldest") {
+    } else if (effectiveDateOrder === "oldest") {
       data.sort((a, b) => (a.timestamp_created || 0) - (b.timestamp_created || 0));
+    } else if (effectiveDateOrder === "relevance") {
+      // Se estiver no modo BM25, ordenamos pelo Score BM25. Caso contrário, pelo Utility Score.
+      if (mode === "bm25") {
+        data.sort((a, b) => (b.score || 0) - (a.score || 0));
+      } else {
+        data.sort((a, b) => (b.utilityScore || 0) - (a.utilityScore || 0));
+      }
     }
     return data;
-  }, [comments, filters.dateOrder]);
+  }, [comments, filters.dateOrder, mode]);
 
   async function fetchComments(nextCursor: string) {
     if (!appId) return;
@@ -162,7 +174,7 @@ export function CommentsDialog({
       const data: CommentResponse = await response.json();
 
       const received = data.reviews || data.comments || [];
-      const filtered = applyLocalFilters(received);
+      const filtered = applyLocalFilters(received, "default");
 
       setComments((prev) => (nextCursor === "*" ? filtered : [...prev, ...filtered]));
       setCursor(data.cursor || "");
@@ -186,7 +198,7 @@ export function CommentsDialog({
       const response = await fetch(url.toString());
       const data: CommentResponse = await response.json();
       const received = data.comments || [];
-      setComments(applyLocalFilters(received));
+      setComments(applyLocalFilters(received, "keywords"));
       setCursor("");
       setMode("keywords");
       setActiveTab("keywords");
@@ -197,15 +209,21 @@ export function CommentsDialog({
     }
   }
 
-  function applyLocalFilters(raw: ReviewComment[]) {
+  function applyLocalFilters(raw: ReviewComment[], targetMode: string = mode) {
     return raw.filter((c) => {
-      if (filters.sentiment === "positive" && !c.voted_up) return false;
-      if (filters.sentiment === "negative" && c.voted_up) return false;
-      if (filters.minPlaytime && ((c.author?.playtime_forever || 0) / 60 < Number(filters.minPlaytime))) return false;
-      if (filters.minVotesUp && (c.votes_up || 0) < Number(filters.minVotesUp)) return false;
-      if (filters.minTextLength && (c.review || "").length < Number(filters.minTextLength)) return false;
-      if (filters.minUtilityScore && (c.utilityScore || 0) < Number(filters.minUtilityScore)) return false;
-      if (mode === "bm25" && filters.minBM25 && (c.score || 0) < Number(filters.minBM25)) return false;
+      // Filtros da aba "Todos" (Default) só se aplicam se estivermos no modo default
+      if (targetMode === "default") {
+        if (filters.sentiment === "positive" && !c.voted_up) return false;
+        if (filters.sentiment === "negative" && c.voted_up) return false;
+        if (filters.minPlaytime && ((c.author?.playtime_forever || 0) / 60 < Number(filters.minPlaytime))) return false;
+        if (filters.minVotesUp && (c.votes_up || 0) < Number(filters.minVotesUp)) return false;
+        if (filters.minTextLength && (c.review || "").length < Number(filters.minTextLength)) return false;
+        if (filters.minUtilityScore && (c.utilityScore || 0) < Number(filters.minUtilityScore)) return false;
+      }
+      
+      // Filtro específico da aba BM25
+      if (targetMode === "bm25" && filters.minBM25 && (c.score || 0) < Number(filters.minBM25)) return false;
+      
       return true;
     });
   }
@@ -220,7 +238,7 @@ export function CommentsDialog({
       )}`;
       const response = await fetch(url);
       const data: ReviewComment[] = await response.json();
-      const filtered = applyLocalFilters(data);
+      const filtered = applyLocalFilters(data, "bm25");
       setComments(filtered);
       setCursor("");
       setMode("bm25");
@@ -268,7 +286,11 @@ export function CommentsDialog({
     const voteColor = comment.voted_up ? "text-emerald-600" : "text-red-500";
     const utility = comment.utilityScore ?? 0;
     const scoreBadge =
-      utility >= 8 ? "bg-emerald-100 text-emerald-800" : utility >= 5 ? "bg-blue-100 text-blue-800" : "bg-muted";
+      utility >= 8
+        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400"
+        : utility >= 5
+        ? "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-400"
+        : "bg-secondary text-secondary-foreground";
 
     return (
       <div
@@ -312,8 +334,8 @@ export function CommentsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden">
-        <DialogHeader>
+      <DialogContent className="flex flex-col h-[90vh] max-w-3xl overflow-hidden p-0 gap-0">
+        <DialogHeader className="p-6 pb-2">
           <div className="flex items-start justify-between gap-2">
             <div className="space-y-1">
               <DialogTitle>Comentários - {gameName}</DialogTitle>
@@ -359,8 +381,8 @@ export function CommentsDialog({
           </div>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+        <div className="flex flex-1 flex-col overflow-hidden px-6">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-none space-y-4">
             <TabsList className="w-full justify-start">
               <TabsTrigger value="default">Todos</TabsTrigger>
               <TabsTrigger value="bm25">Relevantes (BM25)</TabsTrigger>
@@ -544,7 +566,7 @@ export function CommentsDialog({
 
           <Separator />
 
-          <div className="h-[60vh] space-y-3 overflow-y-auto pr-4">
+          <div className="flex-1 space-y-3 overflow-y-auto pr-2 pb-2 min-h-0 mt-4">
             {isLoading && comments.length === 0 ? (
               <div className="flex justify-center py-6 text-sm text-muted-foreground">Carregando comentários...</div>
             ) : null}
@@ -567,7 +589,7 @@ export function CommentsDialog({
           </div>
         </div>
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+        <DialogFooter className="flex flex-col gap-2 p-6 pt-2 sm:flex-row sm:justify-between">
           <div className="text-xs text-muted-foreground">
             {mode === "keywords"
               ? "Exibindo comentários relevantes para as palavras-chave."

@@ -153,7 +153,11 @@ export default function ExplorePage() {
         },
       };
 
-      setGames((prev) => [...prev, summary]);
+      setGames((prev) => {
+        if (prev.some((g) => g.appId === summary.appId)) return prev;
+        return [...prev, summary];
+      });
+      
       setSearchTerm("");
       setSelectedAppId(null);
       setSearchResults([]);

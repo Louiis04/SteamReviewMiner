@@ -74,7 +74,7 @@ export default function Home() {
         <Card>
           <CardHeader>
             <CardTitle>2) Filtrar comentários</CardTitle>
-            <CardDescription>Tabs: Todos, Relevantes (BM25) e Palavras-chave.</CardDescription>
+            <CardDescription>Tags: Todos, Relevantes (BM25) e Palavras-chave.</CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">Priorize os mais úteis, aplique BM25 e revele os pontos que mais importam.</CardContent>
         </Card>

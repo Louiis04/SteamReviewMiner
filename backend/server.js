@@ -11,6 +11,13 @@ const popularGames = require("./popularGames");
 const k1 = 1.5;
 const b = 0.75;
 
+// Função auxiliar segura para pegar playtime (funciona tanto p/ DB quanto p/ Steam API)
+function getPlaytime(review) {
+  if (review.author_playtime_forever !== undefined) return review.author_playtime_forever;
+  if (review.author && review.author.playtime_forever !== undefined) return review.author.playtime_forever;
+  return 0;
+}
+
 // Função auxiliar para calcular Score de Utilidade
 function calculateUtilityScore(review) {
   // Cálculo do Score Bruto (Raw Score)
@@ -20,7 +27,7 @@ function calculateUtilityScore(review) {
 
   // Fator de tempo de jogo (Logarítmico base 10)
   // Ex: 10h -> ~1.1x | 100h -> ~1.2x | 1000h -> ~1.3x
-  const hours = (review.author_playtime_forever || 0) / 60;
+  const hours = getPlaytime(review) / 60;
   const playTimeFactor = 1 + Math.log10(1 + hours) * 0.1;
 
   const votesScore =
@@ -215,41 +222,62 @@ app.get("/api/game/comments/:appId", async (req, res) => {
     : parseInt(page) || 1;
 
   const filters = {
-    sentiment,
+    sentiment: sentiment === "all" ? undefined : sentiment,
     minPlaytime: minPlaytime ? parseInt(minPlaytime) : undefined,
     minVotesUp: minVotesUp ? parseInt(minVotesUp) : undefined,
     minTextLength: minTextLength ? parseInt(minTextLength) : undefined,
-    dateOrder,
+    dateOrder: dateOrder === "relevance" ? undefined : dateOrder,
   };
 
   try {
     const hasCustomFilters =
-      sentiment || minPlaytime || minVotesUp || minTextLength || dateOrder;
-    const commentsExpired = await db.areCommentsExpired(appId);
+      filters.sentiment ||
+      filters.minPlaytime ||
+      filters.minVotesUp ||
+      filters.minTextLength ||
+      filters.dateOrder;
+    
+    // LOG DIAGNÓSTICO
+    console.log(`📡 [REQUEST] Cursor recebido: "${cursor}" | isPageCursor: ${isPageCursor}`);
+    console.log(`🔍 [FILTERS] hasCustomFilters: ${!!hasCustomFilters} | Filtros:`, filters);
 
-    if (commentsExpired && cursor === "*") {
+    const commentsExpired = await db.areCommentsExpired(appId);
+    console.log(`⏱️ [CACHE CHECK] Comments Expired: ${commentsExpired}`);
+    console.log(`🧩 [LOGIC CHECK] (cursor=* OR customFilter OR pageCursor): ${(cursor === "*" || hasCustomFilters || isPageCursor)}`);
+    console.log(`🧩 [LOGIC CHECK] (!expired OR pageCursor): ${(!commentsExpired || isPageCursor)}`);
+
+    if (commentsExpired && cursor === "*" && !hasCustomFilters) {
       console.log(
         `🌐 [API] Cache expirado ou vazio. Buscando novos comentários da Steam API para AppID ${appId}`
       );
     }
 
-    if (cursor === "*" || hasCustomFilters || isPageCursor) {
-      if (!commentsExpired || hasCustomFilters) {
-        console.log(
-          `📦 [CACHE] Buscando comentários do banco para AppID ${appId} com filtros:`,
-          filters
-        );
-        const limit = parseInt(num_per_page);
-        const offset = (pageFromCursor - 1) * limit;
-        const comments = await db.getComments(appId, limit, offset, filters);
-        const total = await db.getCommentsCount(appId, filters);
+    // LÓGICA DE DECISÃO DE CACHE ATUALIZADA:
+    // Para navegação padrão ("Recente" sem filtros), SEMPRE preferimos a API da Steam.
+    // Isso evita o "Cache Trap", onde o usuário baixa 50 reviews, o cache fica válido, 
+    // e o sistema para de buscar novos dados na Steam porque acha que o DB local (com apenas 50) é a verdade absoluta.
+    // Usamos o DB apenas se:
+    // 1. O usuário aplicou filtros (minPlaytime, sentiment, etc) -> O DB é necessário para filtrar.
+    // 2. O usuário já está navegando numa paginação interna do DB (cursor começa com "page_").
+    
+    const shouldForceApi = !hasCustomFilters && !isPageCursor;
 
-        // Se temos poucos comentários em cache (ex.: só a primeira página), deixamos seguir
-        // para a Steam API para habilitar cursor/paginação e tentar trazer mais páginas.
-        const cacheTooSmall =
-          cursor === "*" && !hasCustomFilters && total <= limit;
+    if (!shouldForceApi && ((cursor === "*" || hasCustomFilters || isPageCursor) && (!commentsExpired || isPageCursor))) {
+      console.log(
+        `📦 [CACHE] Buscando comentários do banco para AppID ${appId} com filtros:`,
+        filters
+      );
+      const limit = parseInt(num_per_page);
+      const offset = (pageFromCursor - 1) * limit;
+      const comments = await db.getComments(appId, limit, offset, filters);
+      const total = await db.getCommentsCount(appId, filters);
 
-        if (!cacheTooSmall && (total > 0 || hasCustomFilters)) {
+      // Se temos poucos comentários em cache (ex.: só a primeira página), deixamos seguir
+      // para a Steam API para habilitar cursor/paginação e tentar trazer mais páginas.
+      const cacheTooSmall =
+        cursor === "*" && !hasCustomFilters && total <= limit;
+
+      if (!cacheTooSmall && (total > 0 || hasCustomFilters)) {
           const formattedComments = comments.map((c) => ({
             recommendationid: c.recommendationid,
             author: {
@@ -281,7 +309,6 @@ app.get("/api/game/comments/:appId", async (req, res) => {
             total: total,
           });
         }
-      }
     }
 
     console.log(
@@ -328,6 +355,8 @@ app.get("/api/game/comments/:appId", async (req, res) => {
           language: "all",
           filter: filter,
           purchase_type: "all",
+          review_type: "all", // Garante positivas e negativas
+          day_range: 365, // Tenta buscar até 1 ano atrás se possível (embora 'recent' costuma ignorar, mal não faz)
         },
       }
     );
@@ -338,16 +367,49 @@ app.get("/api/game/comments/:appId", async (req, res) => {
         `💾 ${savedCount} novos comentários salvos no banco para AppID ${appId}`
       );
     }
+    
+    // Log de Debug para investigar paginação
+    console.log(`🔍 [STEAM API DEBUG] AppID: ${appId} | Reviews Retornadas: ${response.data.reviews?.length || 0} | Cursor Novo: ${response.data.cursor ? "PRESENTE" : "VAZIO/NULL"}`);
 
     // Adiciona o utilityScore nas reviews vindas da API da Steam
-    const reviewsWithScore = response.data.reviews
+    let reviewsWithScore = response.data.reviews
       ? response.data.reviews.map((r) => ({
           ...r,
           utilityScore: calculateUtilityScore(r),
         }))
       : [];
 
-    res.json({ ...response.data, reviews: reviewsWithScore, fromCache: false });
+    // [CORREÇÃO] Aplicar filtros manualmente para dados vindos da API externa (pois o DB não filtrou)
+    if (filters.minPlaytime) {
+      reviewsWithScore = reviewsWithScore.filter(
+        (r) => getPlaytime(r) >= filters.minPlaytime
+      );
+    }
+    if (filters.minVotesUp) {
+      reviewsWithScore = reviewsWithScore.filter(
+        (r) => (r.votes_up || 0) >= filters.minVotesUp
+      );
+    }
+    if (filters.minTextLength) {
+      reviewsWithScore = reviewsWithScore.filter(
+        (r) => (r.review ? r.review.length : 0) >= filters.minTextLength
+      );
+    }
+
+    // Padronizar resposta para que o frontend encontre 'total' e 'cursor' na raiz
+    const totalReviews = response.data.query_summary
+      ? response.data.query_summary.total_reviews
+      : 0;
+
+    console.log(`📤 [API] Retornando ${reviewsWithScore.length} reviews (Total na Steam: ${totalReviews})`);
+
+    res.json({
+      ...response.data,
+      reviews: reviewsWithScore,
+      fromCache: false,
+      total: totalReviews,
+      cursor: response.data.cursor,
+    });
   } catch (error) {
     console.error("Erro ao buscar comentários:", error.message);
     res.status(500).json({
